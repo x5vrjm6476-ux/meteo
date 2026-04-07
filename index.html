@@ -82,13 +82,45 @@ svg { display: block; }
 }
 .bg-warm-glow.show { opacity: 1; }
 
-/* Vignette for consistent contrast against text */
+/* Vignette — only darkens the very top edge a touch for status-bar
+   readability. The bottom is intentionally NOT darkened, since the
+   .bottom-fade frosted overlay handles that area. */
 .bg-vignette {
   position: absolute; inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.22) 100%),
-    linear-gradient(180deg, rgba(0,0,0,0.20) 0%, transparent 18%, transparent 82%, rgba(0,0,0,0.20) 100%);
+    radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.16) 100%),
+    linear-gradient(180deg, rgba(0,0,0,0.20) 0%, transparent 14%);
+}
+
+/* Frosted glass strip pinned to the bottom of the viewport. Fades from
+   fully blurred & slightly dark at the very bottom (where the Safari
+   URL-bar lives) to barely-visible at the top, giving the iOS-Weather
+   "content disappears under glass" effect. */
+.bottom-fade {
+  position: fixed;
+  left: 0; right: 0;
+  bottom: 0;
+  height: calc(env(safe-area-inset-bottom) + 90px);
+  pointer-events: none;
+  z-index: 50;
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+  background: linear-gradient(to top,
+    rgba(8,12,28,0.55) 0%,
+    rgba(8,12,28,0.30) 35%,
+    rgba(8,12,28,0.10) 65%,
+    rgba(8,12,28,0.00) 100%);
+  -webkit-mask-image: linear-gradient(to top,
+    #000 0%,
+    #000 55%,
+    rgba(0,0,0,0.55) 80%,
+    rgba(0,0,0,0) 100%);
+  mask-image: linear-gradient(to top,
+    #000 0%,
+    #000 55%,
+    rgba(0,0,0,0.55) 80%,
+    rgba(0,0,0,0) 100%);
 }
 
 /* Grain overlay for film-like quality */
@@ -296,8 +328,8 @@ svg { display: block; }
 .topbar-btn:active { transform: scale(0.94); }
 .topbar-title {
   flex: 1;
-  text-align: center;
-  padding: 6px 10px;
+  text-align: left;
+  padding: 6px 10px 6px 4px;
   border-radius: 14px;
   transition: background 0.18s;
   min-width: 0;
@@ -305,9 +337,11 @@ svg { display: block; }
 .topbar-title:hover { background: rgba(255,255,255,0.05); }
 .topbar-title-name {
   font-family: var(--font-display);
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: -0.2px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  line-height: 1.1;
+  color: #fff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -315,10 +349,11 @@ svg { display: block; }
 .topbar-title-sub {
   font-size: 11px;
   color: var(--fg-3);
-  margin-top: 1px;
+  margin-top: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  letter-spacing: 0.1px;
 }
 
 /* SCROLL CONTAINER */
@@ -334,7 +369,7 @@ svg { display: block; }
 .page-wrap {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 4px 18px calc(env(safe-area-inset-bottom) + 28px);
+  padding: 4px 18px calc(env(safe-area-inset-bottom) + 110px);
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
@@ -1063,6 +1098,12 @@ svg { display: block; }
 .map-card.fullscreen #map { flex: 1; height: auto; min-height: 0; }
 .map-card.fullscreen .card-head { padding-top: calc(env(safe-area-inset-top) + 14px); }
 .map-card.fullscreen .time-bar { padding-bottom: calc(env(safe-area-inset-bottom) + 12px); }
+/* Hide the bottom-fade overlay while the map is fullscreen so radar
+   controls aren't dimmed/blurred. */
+body.map-fullscreen .bottom-fade { display: none; }
+/* While a sheet/modal is open, the fade is fully covered by the sheet —
+   hiding it avoids any sub-pixel bleed at the sheet edges. */
+body.sheet-open .bottom-fade { display: none; }
 .chip-icon {
   width: 30px; height: 26px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -1751,28 +1792,64 @@ html.sheet-open, body.sheet-open {
 .tile-detail-scale {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 4px;
+  margin-top: 6px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--glass-border-soft);
+  border-radius: 14px;
+  padding: 8px 6px;
 }
 .tile-detail-scale-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
   align-items: center;
   gap: 10px;
+  padding: 7px 10px;
   font-size: 12.5px;
   color: var(--fg-2);
+  border-radius: 10px;
+  transition: background 0.16s;
 }
 .tile-detail-scale-swatch {
-  width: 14px; height: 14px;
-  border-radius: 4px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
   flex-shrink: 0;
-  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.18);
+  margin: 0 auto;
+}
+.tile-detail-scale-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.tile-detail-scale-range {
+  color: var(--fg-3);
+  font-size: 11px;
+  font-feature-settings: "tnum";
+  white-space: nowrap;
 }
 .tile-detail-scale-row.is-current {
+  background: rgba(255,255,255,0.10);
   color: #fff;
-  font-weight: 700;
+  font-weight: 600;
 }
+.tile-detail-scale-row.is-current .tile-detail-scale-label { font-weight: 700; }
+.tile-detail-scale-row.is-current .tile-detail-scale-range { color: #fff; }
 .tile-detail-scale-row.is-current .tile-detail-scale-swatch {
-  box-shadow: 0 0 0 2px rgba(255,255,255,0.6);
+  width: 14px; height: 14px;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.55);
+}
+
+/* Day label below the sheet head */
+.tile-sheet-day-label {
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  padding: 0 18px 4px;
 }
 .sheet-handle {
   width: 38px;
@@ -2347,13 +2424,13 @@ html.sheet-open, body.sheet-open {
   <div class="bg-fog" id="bgFog"></div>
 </div>
 
+<!-- Frosted bottom strip — sits above content, under sheets/modals -->
+<div class="bottom-fade" id="bottomFade"></div>
+
 <!-- ============ APP ============ -->
 <div class="app">
 
   <header class="topbar">
-    <button class="topbar-btn" id="infoBtn" aria-label="Info">
-      <svg width="20" height="20"><use href="#i-info"/></svg>
-    </button>
     <button class="topbar-title" id="titleBtn" aria-label="Standorte">
       <div class="topbar-title-name" id="locName">Wetter</div>
       <div class="topbar-title-sub" id="locSub">tippen für Standorte</div>
@@ -2475,15 +2552,19 @@ html.sheet-open, body.sheet-open {
 <div class="sheet sheet-tall" id="tileSheet" style="z-index:230;">
   <div class="sheet-handle"></div>
   <div class="day-sheet-head">
-    <div class="day-sheet-nav"><span style="width:36px;"></span></div>
+    <div class="day-sheet-nav">
+      <button id="tileSheetPrev" aria-label="Vorheriger Tag">‹</button>
+    </div>
     <div class="day-sheet-title-wrap">
       <div class="day-sheet-title" id="tileSheetTitle">—</div>
       <div class="day-sheet-sub" id="tileSheetSub">—</div>
     </div>
     <div class="day-sheet-nav">
-      <button id="tileSheetClose" aria-label="Schliessen" style="font-size:22px;">×</button>
+      <button id="tileSheetNext" aria-label="Nächster Tag">›</button>
+      <button id="tileSheetClose" aria-label="Schliessen" style="font-size:22px;margin-left:6px;">×</button>
     </div>
   </div>
+  <div class="tile-sheet-day-label" id="tileSheetDayLabel">Heute</div>
   <div class="tile-sheet-body" id="tileSheetBody"></div>
 </div>
 
@@ -3298,6 +3379,9 @@ const RADAR_COLOR      = 2;   // universal blue → green → yellow → red
 const RADAR_OPTS       = '1_1';
 const RADAR_OPACITY    = 0.78;
 const RADAR_RELOAD_MS  = 8 * 60 * 1000;   // re-fetch frame index every 8 min
+const RADAR_MAX_PAST   = 6;               // keep at most this many past frames in pool
+const RADAR_MAX_FUTURE = 4;               // and this many forecast frames
+const RADAR_TILE_SIZE  = 512;             // bigger tiles → fewer requests per pan
 
 let _radarLoadToken = 0;
 let _radarMetaTs    = 0;
@@ -3321,12 +3405,15 @@ async function loadRadar() {
     const meta = await r.json();
     if (token !== _radarLoadToken) return;
 
-    const past    = (meta?.radar?.past || []);
-    const nowcast = (meta?.radar?.nowcast || []);
-    const all = past.concat(nowcast);
-    if (!all.length) throw new Error('no frames');
+    let past    = (meta?.radar?.past || []).slice();
+    let nowcast = (meta?.radar?.nowcast || []).slice();
+    if (!past.length && !nowcast.length) throw new Error('no frames');
 
-    // Determine the "now" frame (the most-recent past one)
+    // Trim aggressively to a manageable window so we don't hammer the cache.
+    if (past.length > RADAR_MAX_PAST) past = past.slice(past.length - RADAR_MAX_PAST);
+    if (nowcast.length > RADAR_MAX_FUTURE) nowcast = nowcast.slice(0, RADAR_MAX_FUTURE);
+
+    const all = past.concat(nowcast);
     const nowIdx = Math.max(0, past.length - 1);
 
     state.radarFrames = all.map((f, i) => ({
@@ -3345,32 +3432,21 @@ async function loadRadar() {
   }
 }
 
-// Build one TileLayer per frame, attach all of them at opacity 0, then
-// fade in the current one. This gives a smooth animation without flicker.
+// Lazy tile-layer pool: we only build the layer for the *active* frame
+// up-front. Other frames are created on-demand the first time they are
+// shown (during slider drag, animation, etc.). This keeps the initial
+// tile request count down to one frame's worth — RainViewer's cache
+// rate-limits aggressively and creating ~14 layers at once gets you 429s.
 function _applyRadarLayers() {
   if (!state.map || !state.radarFrames?.length) return;
 
-  // Tear down old pool
+  // Tear down old pool entirely — frames may have new IDs.
   if (state.radarPool && state.radarPool.length) {
     for (const layer of state.radarPool) {
-      try { state.map.removeLayer(layer); } catch(e) {}
+      if (layer) { try { state.map.removeLayer(layer); } catch(e) {} }
     }
   }
-  state.radarPool = [];
-
-  for (const frame of state.radarFrames) {
-    const url = `${state.radarHost}${frame.path}/256/{z}/{x}/{y}/${RADAR_COLOR}/${RADAR_OPTS}.png`;
-    const layer = L.tileLayer(url, {
-      tileSize: 256,
-      opacity: 0,
-      pane: 'radarPane',
-      attribution: '© RainViewer',
-      crossOrigin: true,
-      zIndex: 10
-    });
-    if (state.showRadar) layer.addTo(state.map);
-    state.radarPool.push(layer);
-  }
+  state.radarPool = state.radarFrames.map(() => null);
 
   // Default to "now" frame
   state.radarIdx = state.radarNowIdx || 0;
@@ -3380,15 +3456,39 @@ function _applyRadarLayers() {
     slider.value = state.radarIdx;
   }
 
-  if (state.showRadar) showRadarFrame(state.radarIdx);
+  if (state.showRadar) {
+    _ensureRadarLayer(state.radarIdx);
+    showRadarFrame(state.radarIdx);
+  }
   updateRadarRangeLabel();
 
   const empty = document.getElementById('mapEmpty');
   if (empty) empty.hidden = true;
 
-  if (state.showRadar && !state.radarPlaying && state.radarFrames.length > 1) {
-    setTimeout(() => { if (state.showRadar && !state.radarPlaying) playRadarAnimation(); }, 800);
-  }
+  // Don't auto-play. Auto-play forces every frame's layer to load on a
+  // timer and immediately bursts the cache. The user can press play.
+}
+
+// Build (or return) the L.tileLayer for a single radar frame.
+function _ensureRadarLayer(idx) {
+  if (!state.map || !state.radarFrames?.[idx]) return null;
+  if (state.radarPool[idx]) return state.radarPool[idx];
+  const frame = state.radarFrames[idx];
+  const url = `${state.radarHost}${frame.path}/${RADAR_TILE_SIZE}/{z}/{x}/{y}/${RADAR_COLOR}/${RADAR_OPTS}.png`;
+  const layer = L.tileLayer(url, {
+    tileSize: RADAR_TILE_SIZE,
+    opacity: 0,
+    pane: 'radarPane',
+    attribution: '© RainViewer',
+    crossOrigin: true,
+    zIndex: 10,
+    updateWhenIdle: true,
+    updateWhenZooming: false,
+    keepBuffer: 1
+  });
+  if (state.showRadar) layer.addTo(state.map);
+  state.radarPool[idx] = layer;
+  return layer;
 }
 
 function updateRadarRangeLabel() {
@@ -3404,8 +3504,12 @@ function showRadarFrame(idx) {
   if (!state.showRadar) return;
   idx = Math.max(0, Math.min(state.radarPool.length - 1, idx));
 
+  // Lazy-create the target frame's layer if it doesn't exist yet.
+  _ensureRadarLayer(idx);
+
   for (let i = 0; i < state.radarPool.length; i++) {
     const layer = state.radarPool[i];
+    if (!layer) continue;
     if (!state.map.hasLayer(layer)) layer.addTo(state.map);
     layer.setOpacity(i === idx ? RADAR_OPACITY : 0);
   }
@@ -3434,12 +3538,13 @@ function toggleRadar(on) {
     if (empty) empty.hidden = true;
     if (state.radarPool) {
       for (const layer of state.radarPool) {
-        try { state.map.removeLayer(layer); } catch(e) {}
+        if (layer) { try { state.map.removeLayer(layer); } catch(e) {} }
       }
     }
     stopRadarAnimation();
   } else {
     if (state.radarPool && state.radarPool.length) {
+      _ensureRadarLayer(state.radarIdx);
       showRadarFrame(state.radarIdx);
     } else {
       loadRadar();
@@ -3615,8 +3720,10 @@ function toggleMapFullscreen() {
   const card = document.querySelector('.map-card');
   if (!card) return;
   card.classList.toggle('fullscreen');
+  const isFs = card.classList.contains('fullscreen');
   // Stop body scroll behind
-  document.body.style.overflow = card.classList.contains('fullscreen') ? 'hidden' : '';
+  document.body.style.overflow = isFs ? 'hidden' : '';
+  document.body.classList.toggle('map-fullscreen', isFs);
   // Force Leaflet to recompute size
   setTimeout(() => { try { state.map.invalidateSize(); } catch(e){} }, 220);
 }
@@ -5013,7 +5120,22 @@ function initDaySheet() {
 }
 
 // ============ TILE DETAIL SHEET ============
-const tileSheetState = { open: false, kind: null };
+const tileSheetState = { open: false, kind: null, dayIdx: 0 };
+const TILE_DAY_LABELS = ['Heute', 'Morgen'];
+function _tileDayLabel(idx) {
+  if (idx === 0) return 'Heute';
+  if (idx === 1) return 'Morgen';
+  const t = state.data?.daily?.time?.[idx];
+  if (!t) return 'Tag ' + (idx + 1);
+  const d = new Date(t);
+  const wd = ['So','Mo','Di','Mi','Do','Fr','Sa'][d.getDay()];
+  return `${wd} ${d.getDate()}. ${['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'][d.getMonth()]}`;
+}
+function _tileMaxDay() {
+  // The forecast carries N days; we cap day-nav to what's available.
+  const len = state.data?.daily?.time?.length || 1;
+  return Math.max(0, len - 1);
+}
 
 // Render a 24-hour mini line chart from `values`. Returns an SVG string.
 function buildTileChart(values, color, opts = {}) {
@@ -5055,8 +5177,8 @@ function buildScale(items, currentValue) {
     const isCur = currentValue != null && currentValue >= it.from && currentValue < it.to;
     return `<div class="tile-detail-scale-row ${isCur ? 'is-current' : ''}">
       <div class="tile-detail-scale-swatch" style="background:${it.color};"></div>
-      <div style="flex:1;">${it.label}</div>
-      <div style="color:var(--fg-3);font-size:11px;">${it.range}</div>
+      <div class="tile-detail-scale-label">${it.label}</div>
+      <div class="tile-detail-scale-range">${it.range}</div>
     </div>`;
   }).join('')}</div>`;
 }
@@ -5064,29 +5186,71 @@ function buildScale(items, currentValue) {
 function _hourlyArr(key) {
   return state.data?.hourly?.[key] || [];
 }
+// Returns the 24-hour slice for whatever day the tile-sheet is currently
+// looking at. dayIdx=0 → "next 24 h from now"; dayIdx>0 → that day midnight→midnight.
 function _next24FromNow(key) {
   const h = _hourlyArr(key);
   if (!h.length) return [];
-  const now = findNowIndex(state.data.hourly.time);
-  return h.slice(Math.max(0, now), Math.max(0, now) + 24);
+  const dayIdx = (typeof tileSheetState !== 'undefined' && tileSheetState?.dayIdx) || 0;
+  if (dayIdx === 0) {
+    const now = findNowIndex(state.data.hourly.time);
+    return h.slice(Math.max(0, now), Math.max(0, now) + 24);
+  }
+  const start = dayIdx * 24;
+  return h.slice(start, start + 24);
 }
 function _aqHourlyNext24(key) {
   const h = state.airQuality?.hourly?.[key] || [];
   if (!h.length) return [];
   const t = state.airQuality.hourly.time || [];
-  const nowMs = Date.now();
-  let nowIdx = 0;
-  for (let i = 0; i < t.length; i++) {
-    if (new Date(t[i]).getTime() <= nowMs) nowIdx = i; else break;
+  const dayIdx = (typeof tileSheetState !== 'undefined' && tileSheetState?.dayIdx) || 0;
+  if (dayIdx === 0) {
+    const nowMs = Date.now();
+    let nowIdx = 0;
+    for (let i = 0; i < t.length; i++) {
+      if (new Date(t[i]).getTime() <= nowMs) nowIdx = i; else break;
+    }
+    return h.slice(nowIdx, nowIdx + 24);
   }
-  return h.slice(nowIdx, nowIdx + 24);
+  // For non-today days, find the AQ index that matches the start of that day
+  // by aligning to the weather hourly time.
+  const wTime = state.data?.hourly?.time;
+  if (!wTime) return [];
+  const target = wTime[dayIdx * 24];
+  if (!target) return [];
+  let aqStart = 0;
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] === target || new Date(t[i]).getTime() === new Date(target).getTime()) { aqStart = i; break; }
+  }
+  return h.slice(aqStart, aqStart + 24);
+}
+// Build a synthetic "current"-like object from any hourly index.
+function _hourlySnapshot(idx) {
+  const cH = state.data?.hourly;
+  if (!cH) return {};
+  const out = {};
+  for (const k of Object.keys(cH)) {
+    if (Array.isArray(cH[k])) out[k] = cH[k][idx];
+  }
+  // Map hourly keys → current keys (Open-Meteo uses different names).
+  out.is_day = cH.is_day?.[idx];
+  return out;
 }
 
 function buildTileDetail(kind) {
   const d = state.data;
   if (!d) return { title: '–', sub: '', html: '<div class="tile-detail-explain">Keine Daten verfügbar.</div>' };
-  const cur = d.current, cH = d.hourly, cD = d.daily;
-  const nowI = findNowIndex(cH.time);
+  const cH = d.hourly, cD = d.daily;
+  const dayIdx = tileSheetState.dayIdx || 0;
+  const isToday = dayIdx === 0;
+  // For today, use real "now". For other days, use noon of that day.
+  const nowI = isToday
+    ? findNowIndex(cH.time)
+    : Math.min((cH.time?.length || 1) - 1, dayIdx * 24 + 12);
+  // For today use the live `current` object; for other days, build a
+  // snapshot from the hourly arrays at the chosen index.
+  const cur = isToday ? d.current : _hourlySnapshot(nowI);
+  const dI = dayIdx; // alias used for daily-array indexing
 
   switch (kind) {
     case 'uv': {
@@ -5105,7 +5269,7 @@ function buildTileDetail(kind) {
         html: `
           <div class="tile-detail-hero">
             <div><div class="tile-detail-value">${fmt1(uv)}</div></div>
-            <div class="tile-detail-meta"><b>Heute max</b><br>${fmt1(cD.uv_index_max?.[0] ?? max24)}</div>
+            <div class="tile-detail-meta"><b>Tages-Max</b><br>${fmt1(cD.uv_index_max?.[dI] ?? max24)}</div>
           </div>
           <div class="tile-detail-explain">${uv >= 6
             ? '<b>Sonnenschutz nötig.</b> Bei UV ab 6 in den nächsten Stunden Sonnencreme LSF 30+, Hut und Sonnenbrille verwenden.'
@@ -5133,7 +5297,7 @@ function buildTileDetail(kind) {
               <span class="tile-detail-pill" style="border-color:${bf.color};color:${bf.color};background:${bf.color}1a;">${bf.n} Bft</span>
               <div class="tile-detail-value">${fmt1(ws)}<span class="tile-detail-value-unit">km/h</span></div>
             </div>
-            <div class="tile-detail-meta"><b>Böen</b> ${fmt1(wg)} km/h<br><b>Richtung</b> ${windDir(wd)} (${Math.round(wd ?? 0)}°)<br><b>Heute max</b> ${fmt1(cD.wind_speed_10m_max?.[0])} km/h</div>
+            <div class="tile-detail-meta"><b>Böen</b> ${fmt1(wg)} km/h<br><b>Richtung</b> ${windDir(wd)} (${Math.round(wd ?? 0)}°)<br><b>Tages-Max</b> ${fmt1(cD.wind_speed_10m_max?.[dI])} km/h</div>
           </div>
           <div class="tile-detail-explain"><b>${bf.label}.</b> ${bf.n >= 6 ? 'Bei dieser Stärke werden grosse Äste bewegt, Schirme schwer zu halten. Vorsicht vor herumfliegenden Gegenständen.' : bf.n >= 4 ? 'Hebt Staub und loses Papier, bewegt kleine Zweige — angenehm spürbar.' : bf.n >= 2 ? 'Spürbar im Gesicht, Blätter rascheln leicht — sehr angenehm.' : 'Kaum spürbarer Hauch, Rauch steigt fast senkrecht.'}</div>
           <div class="tile-detail-section"><div class="day-sheet-section-title">Wind · nächste 24 h</div>${chart}</div>
@@ -5315,9 +5479,9 @@ function buildTileDetail(kind) {
       };
     }
     case 'sunshine': {
-      const sec = cD.sunshine_duration?.[0] ?? 0;
+      const sec = cD.sunshine_duration?.[dI] ?? 0;
       const h = sec / 3600;
-      const day = (cD.daylight_duration?.[0] ?? 0) / 3600;
+      const day = (cD.daylight_duration?.[dI] ?? 0) / 3600;
       const pct = day > 0 ? Math.round((h / day) * 100) : 0;
       const next7Vals = (cD.sunshine_duration || []).slice(0, 7).map(s => s / 3600);
       const chart = buildTileChart(next7Vals, '#ffd45e', { min: 0 });
@@ -5366,9 +5530,9 @@ function buildTileDetail(kind) {
       };
     }
     case 'sun': {
-      const sr = fmtTime(cD.sunrise[0]);
-      const ss = fmtTime(cD.sunset[0]);
-      const day = (cD.daylight_duration?.[0] ?? 0) / 3600;
+      const sr = fmtTime(cD.sunrise[dI]);
+      const ss = fmtTime(cD.sunset[dI]);
+      const day = (cD.daylight_duration?.[dI] ?? 0) / 3600;
       return {
         title: 'Sonnenstand', sub: `${sr} – ${ss}`,
         html: `
@@ -5395,17 +5559,28 @@ function buildTileDetail(kind) {
   return { title: '–', sub: '', html: '' };
 }
 
+function _renderTileSheet() {
+  const detail = buildTileDetail(tileSheetState.kind);
+  document.getElementById('tileSheetTitle').textContent = detail.title;
+  document.getElementById('tileSheetSub').textContent = detail.sub;
+  document.getElementById('tileSheetBody').innerHTML = detail.html;
+  const dayLbl = document.getElementById('tileSheetDayLabel');
+  if (dayLbl) dayLbl.textContent = _tileDayLabel(tileSheetState.dayIdx);
+  // Disable nav buttons at boundaries
+  const prev = document.getElementById('tileSheetPrev');
+  const next = document.getElementById('tileSheetNext');
+  if (prev) prev.disabled = tileSheetState.dayIdx <= 0;
+  if (next) next.disabled = tileSheetState.dayIdx >= _tileMaxDay();
+  // Reset scroll
+  const body = document.getElementById('tileSheetBody');
+  if (body) body.scrollTop = 0;
+}
 function openTileSheet(kind) {
   if (!state.data) return;
   tileSheetState.open = true;
   tileSheetState.kind = kind;
-  const detail = buildTileDetail(kind);
-  document.getElementById('tileSheetTitle').textContent = detail.title;
-  document.getElementById('tileSheetSub').textContent = detail.sub;
-  document.getElementById('tileSheetBody').innerHTML = detail.html;
-  // Reset scroll position
-  const body = document.getElementById('tileSheetBody');
-  if (body) body.scrollTop = 0;
+  tileSheetState.dayIdx = 0;
+  _renderTileSheet();
   lockScroll();
   document.getElementById('tileSheet').classList.add('show');
   document.getElementById('tileSheetBackdrop').classList.add('show');
@@ -5417,11 +5592,30 @@ function closeTileSheet() {
   document.getElementById('tileSheetBackdrop').classList.remove('show');
   unlockScroll();
 }
+function tileSheetPrevDay() {
+  if (!tileSheetState.open) return;
+  if (tileSheetState.dayIdx <= 0) return;
+  tileSheetState.dayIdx--;
+  _renderTileSheet();
+}
+function tileSheetNextDay() {
+  if (!tileSheetState.open) return;
+  if (tileSheetState.dayIdx >= _tileMaxDay()) return;
+  tileSheetState.dayIdx++;
+  _renderTileSheet();
+}
 function initTileSheet() {
   document.getElementById('tileSheetClose').addEventListener('click', closeTileSheet);
   document.getElementById('tileSheetBackdrop').addEventListener('click', closeTileSheet);
+  const prev = document.getElementById('tileSheetPrev');
+  const next = document.getElementById('tileSheetNext');
+  if (prev) prev.addEventListener('click', tileSheetPrevDay);
+  if (next) next.addEventListener('click', tileSheetNextDay);
   document.addEventListener('keydown', e => {
-    if (tileSheetState.open && e.key === 'Escape') closeTileSheet();
+    if (!tileSheetState.open) return;
+    if (e.key === 'Escape') closeTileSheet();
+    else if (e.key === 'ArrowLeft') tileSheetPrevDay();
+    else if (e.key === 'ArrowRight') tileSheetNextDay();
   });
   // Delegated click for ALL bentos: main tiles grid and the day-detail breakdown
   const grid = document.getElementById('tilesGrid');
@@ -6003,9 +6197,6 @@ function init() {
   // Top bar buttons → open sheet
   document.getElementById('listBtn').addEventListener('click', openSheet);
   document.getElementById('titleBtn').addEventListener('click', openSheet);
-  document.getElementById('infoBtn').addEventListener('click', () => {
-    alert('Wetter — Prototyp\n\nDaten: Open-Meteo (best_match inkl. MeteoSwiss ICON-CH1)\nKarte: CartoDB / OpenStreetMap\nRadar: RainViewer\n\nDeine Standorte werden nur lokal gespeichert. Wetter-Anfragen sind anonym.');
-  });
   document.getElementById('sheetClose').addEventListener('click', closeSheet);
   document.getElementById('sheetBackdrop').addEventListener('click', closeSheet);
 
