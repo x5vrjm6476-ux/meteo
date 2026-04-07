@@ -1771,74 +1771,93 @@ html.sheet-open, body.sheet-open {
 }
 .tile-detail-chart {
   width: 100%;
-  height: 140px;
+  /* Aspect-driven so the SVG (viewBox 360x120) is rendered with consistent
+     proportions on every screen — no horizontal stretch. */
+  aspect-ratio: 360 / 120;
+  max-height: 180px;
   background: rgba(255,255,255,0.04);
   border: 1px solid var(--glass-border-soft);
   border-radius: 18px;
-  padding: 14px;
+  padding: 0;
   position: relative;
+  overflow: hidden;
 }
 .tile-detail-chart svg {
+  display: block;
   width: 100%;
   height: 100%;
   overflow: visible;
 }
 .tile-detail-chart-axis {
   fill: var(--fg-3);
-  font-size: 9.5px;
+  font-size: 11px;
   font-family: var(--font-display);
+  font-weight: 600;
   font-feature-settings: "tnum";
 }
 .tile-detail-scale {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 1px;
   margin-top: 6px;
   background: rgba(255,255,255,0.04);
   border: 1px solid var(--glass-border-soft);
   border-radius: 14px;
-  padding: 8px 6px;
+  overflow: hidden;
 }
 .tile-detail-scale-row {
   display: grid;
-  grid-template-columns: 22px 1fr auto;
+  grid-template-columns: 18px 1fr auto;
   align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
-  font-size: 12.5px;
+  gap: 12px;
+  padding: 11px 14px;
+  font-size: 13px;
   color: var(--fg-2);
-  border-radius: 10px;
+  background: rgba(255,255,255,0.012);
+  position: relative;
   transition: background 0.16s;
+}
+.tile-detail-scale-row + .tile-detail-scale-row::before {
+  content: "";
+  position: absolute;
+  left: 44px; right: 14px; top: 0;
+  height: 1px;
+  background: rgba(255,255,255,0.06);
 }
 .tile-detail-scale-swatch {
   width: 12px; height: 12px;
   border-radius: 50%;
   flex-shrink: 0;
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.18);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.18), 0 1px 2px rgba(0,0,0,0.3);
   margin: 0 auto;
+  transition: width 0.16s, height 0.16s, box-shadow 0.16s;
 }
 .tile-detail-scale-label {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  letter-spacing: -0.1px;
 }
 .tile-detail-scale-range {
   color: var(--fg-3);
-  font-size: 11px;
+  font-size: 11.5px;
   font-feature-settings: "tnum";
+  font-weight: 500;
   white-space: nowrap;
 }
 .tile-detail-scale-row.is-current {
-  background: rgba(255,255,255,0.10);
+  background: rgba(110,195,255,0.10);
   color: #fff;
   font-weight: 600;
 }
+.tile-detail-scale-row.is-current::before { display: none; }
+.tile-detail-scale-row.is-current + .tile-detail-scale-row::before { display: none; }
 .tile-detail-scale-row.is-current .tile-detail-scale-label { font-weight: 700; }
-.tile-detail-scale-row.is-current .tile-detail-scale-range { color: #fff; }
+.tile-detail-scale-row.is-current .tile-detail-scale-range { color: #fff; opacity: 0.85; }
 .tile-detail-scale-row.is-current .tile-detail-scale-swatch {
   width: 14px; height: 14px;
-  box-shadow: 0 0 0 2px rgba(255,255,255,0.55);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.55), 0 0 8px currentColor;
 }
 
 /* Day label below the sheet head */
@@ -2350,6 +2369,15 @@ html.sheet-open, body.sheet-open {
       <line x1="12" y1="11" x2="12" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
       <circle cx="12" cy="7.5" r="1.1" fill="currentColor"/>
     </symbol>
+    <symbol id="i-radar" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.55"/>
+      <circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.75"/>
+      <circle cx="12" cy="12" r="2.4" fill="currentColor"/>
+      <path d="M12 12 L21 6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="i-x" viewBox="0 0 24 24">
+      <path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+    </symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4 L20 12 L7 20 Z" fill="currentColor"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/></symbol>
     <symbol id="i-wind" viewBox="0 0 24 24">
@@ -2431,6 +2459,9 @@ html.sheet-open, body.sheet-open {
 <div class="app">
 
   <header class="topbar">
+    <button class="topbar-btn" id="radarBtn" aria-label="Radar öffnen">
+      <svg width="20" height="20"><use href="#i-radar"/></svg>
+    </button>
     <button class="topbar-title" id="titleBtn" aria-label="Standorte">
       <div class="topbar-title-name" id="locName">Wetter</div>
       <div class="topbar-title-sub" id="locSub">tippen für Standorte</div>
@@ -2481,38 +2512,6 @@ html.sheet-open, body.sheet-open {
       </div>
 
       <div class="col-right">
-        <section class="card glass map-card" data-card="map">
-          <div class="card-head">
-            <span>Karte &amp; Radar</span>
-            <div class="map-tabs">
-              <button class="chip active" data-overlay="radar">Radar</button>
-              <button class="chip" data-overlay="temp">Temperatur</button>
-              <button class="chip" data-overlay="clouds">Wolken</button>
-              <span class="chip chip-info" id="radarRange" title="Zeitspanne">—</span>
-              <button class="chip chip-icon" id="mapFullscreen" aria-label="Vollbild">⛶</button>
-            </div>
-          </div>
-          <div id="map">
-            <div class="map-empty" id="mapEmpty" hidden>
-              <svg width="22" height="22"><use href="#i-sun"/></svg>
-              <span>Kein Niederschlag in den nächsten 12 Stunden</span>
-            </div>
-          </div>
-          <div class="map-legend" id="mapLegend">
-            <span class="legend-title" id="legendTitle">Niederschlag</span>
-            <span class="legend-labels" id="legendMin">leicht</span>
-            <div class="legend-bar radar" id="legendBar"></div>
-            <span class="legend-labels" id="legendMax">heftig</span>
-          </div>
-          <div class="time-bar">
-            <button class="time-play" id="radarPlay" aria-label="Play">
-              <svg width="14" height="14"><use id="radarPlayIcon" href="#i-play"/></svg>
-            </button>
-            <input type="range" id="radarSlider" class="time-slider" min="0" max="0" value="0">
-            <span class="time-label" id="radarTime">—</span>
-          </div>
-        </section>
-
         <div class="tiles-grid" id="tilesGrid" data-card="tiles"></div>
       </div>
 
@@ -5138,34 +5137,67 @@ function _tileMaxDay() {
 }
 
 // Render a 24-hour mini line chart from `values`. Returns an SVG string.
+// Stable, monotonic chart counter so multiple charts on the same page don't
+// share the same gradient ID.
+let _tdgChartId = 0;
 function buildTileChart(values, color, opts = {}) {
   const valid = values.map((v, i) => ({ v: (v == null ? null : v), i })).filter(p => p.v != null);
-  if (valid.length < 2) return '<div class="tile-detail-chart" style="display:flex;align-items:center;justify-content:center;color:var(--fg-3);font-size:13px;">Keine Daten</div>';
-  const min = opts.min != null ? opts.min : Math.min(...valid.map(p => p.v));
-  const max = opts.max != null ? opts.max : Math.max(...valid.map(p => p.v));
+  if (valid.length < 2) return '<div class="tile-detail-chart" style="display:flex;align-items:center;justify-content:center;color:var(--fg-3);font-size:13px;height:160px;">Keine Daten</div>';
+  let min = opts.min != null ? opts.min : Math.min(...valid.map(p => p.v));
+  let max = opts.max != null ? opts.max : Math.max(...valid.map(p => p.v));
+  // Add a tiny breathing margin so flat data doesn't draw on the axis.
+  if (max - min < 0.5) { const c = (max + min) / 2; min = c - 0.5; max = c + 0.5; }
   const r = Math.max(0.5, max - min);
-  const W = 100, H = 100;
-  const padX = 6, padY = 14;
-  const innerW = W - padX * 2, innerH = H - padY * 2;
+
+  // Wide aspect viewBox that closely matches the rendered container so the
+  // chart doesn't stretch horizontally vs. vertically. We use
+  // preserveAspectRatio="none" so it adapts to whatever width the parent
+  // gives us, and `vector-effect="non-scaling-stroke"` keeps the stroke
+  // uniform regardless of stretch — that's what was making earlier curves
+  // look "verzerrt".
+  const W = 360, H = 120;
+  const padX = 18, padTop = 14, padBot = 26;
+  const innerW = W - padX * 2;
+  const innerH = H - padTop - padBot;
   const xFor = i => padX + (i / (values.length - 1)) * innerW;
-  const yFor = v => padY + (1 - (v - min) / r) * innerH;
+  const yFor = v => padTop + (1 - (v - min) / r) * innerH;
+  const baseY = padTop + innerH;
+
   const path = valid.map((p, i) => (i ? 'L' : 'M') + xFor(p.i).toFixed(2) + ',' + yFor(p.v).toFixed(2)).join(' ');
-  const area = path + ` L${xFor(valid[valid.length - 1].i).toFixed(2)},${(H - padY).toFixed(2)} L${xFor(valid[0].i).toFixed(2)},${(H - padY).toFixed(2)} Z`;
-  // Pick a few axis labels (hours 0, 6, 12, 18, 23)
-  const labelHours = [0, 6, 12, 18, 23];
-  const labels = labelHours.filter(h => h < values.length).map(h => `<text class="tile-detail-chart-axis" x="${xFor(h).toFixed(2)}" y="${(H - 1).toFixed(2)}" text-anchor="middle">${pad2(h)}</text>`).join('');
-  // Highlight the current hour
+  const area = path
+    + ` L${xFor(valid[valid.length - 1].i).toFixed(2)},${baseY.toFixed(2)}`
+    + ` L${xFor(valid[0].i).toFixed(2)},${baseY.toFixed(2)} Z`;
+
+  // Subtle horizontal grid (3 lines)
+  const gridYs = [0, 0.5, 1].map(t => (padTop + t * innerH));
+  const grid = gridYs.map(y => `<line x1="${padX}" x2="${W - padX}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-width="1" vector-effect="non-scaling-stroke"/>`).join('');
+
+  // Axis hour labels — only 0/6/12/18/23 if we have 24 hours, else evenly spaced.
+  let labelIdx;
+  if (values.length === 24) labelIdx = [0, 6, 12, 18, 23];
+  else if (values.length <= 7) labelIdx = values.map((_, i) => i);
+  else labelIdx = [0, Math.floor(values.length * 0.25), Math.floor(values.length * 0.5), Math.floor(values.length * 0.75), values.length - 1];
+  const isHourly = values.length === 24;
+  const labels = labelIdx.map(i => {
+    const lbl = isHourly ? pad2(i) : (i + 1);
+    return `<text class="tile-detail-chart-axis" x="${xFor(i).toFixed(2)}" y="${(H - 6).toFixed(2)}" text-anchor="middle">${lbl}</text>`;
+  }).join('');
+
+  // Highlight the current hour with a small white dot
   const nowIdx = (opts.nowHour != null && opts.nowHour < values.length) ? opts.nowHour : null;
   const nowDot = (nowIdx != null && values[nowIdx] != null)
-    ? `<circle cx="${xFor(nowIdx).toFixed(2)}" cy="${yFor(values[nowIdx]).toFixed(2)}" r="2.4" fill="#fff" stroke="${color}" stroke-width="1.4"/>`
+    ? `<g><line x1="${xFor(nowIdx).toFixed(2)}" x2="${xFor(nowIdx).toFixed(2)}" y1="${padTop}" y2="${baseY.toFixed(2)}" stroke="rgba(255,255,255,0.18)" stroke-width="1" stroke-dasharray="2,3" vector-effect="non-scaling-stroke"/><circle cx="${xFor(nowIdx).toFixed(2)}" cy="${yFor(values[nowIdx]).toFixed(2)}" r="3.4" fill="#fff" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke"/></g>`
     : '';
+
+  const gid = 'tdg' + (++_tdgChartId);
   return `<div class="tile-detail-chart"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-    <defs><linearGradient id="tdg" x1="0" x2="0" y1="0" y2="1">
-      <stop offset="0%" stop-color="${color}" stop-opacity="0.45"/>
+    <defs><linearGradient id="${gid}" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="${color}" stop-opacity="0.42"/>
       <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
     </linearGradient></defs>
-    <path d="${area}" fill="url(#tdg)"/>
-    <path d="${path}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>
+    ${grid}
+    <path d="${area}" fill="url(#${gid})"/>
+    <path d="${path}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
     ${nowDot}
     ${labels}
   </svg></div>`;
