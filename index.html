@@ -1056,12 +1056,13 @@ svg { display: block; }
   border-radius: 0;
   margin: 0;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }
 .map-card.fullscreen #map { flex: 1; height: auto; min-height: 0; }
 .map-card.fullscreen .card-head { padding-top: calc(env(safe-area-inset-top) + 14px); }
+.map-card.fullscreen .time-bar { padding-bottom: calc(env(safe-area-inset-bottom) + 12px); }
 .chip-icon {
   width: 30px; height: 26px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -1074,7 +1075,7 @@ svg { display: block; }
   align-items: center;
   gap: 12px;
   padding: 12px 18px;
-  background: rgba(0,0,0,0.25);
+  background: rgba(0,0,0,0.30);
   border-top: 1px solid rgba(255,255,255,0.08);
 }
 .time-play {
@@ -1845,7 +1846,7 @@ html.sheet-open, body.sheet-open {
 .sheet-action:hover { background: rgba(255,255,255,0.14); }
 
 .search-results, .saved-list { padding-bottom: 8px; }
-.search-result, .saved-loc {
+.search-result {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1858,32 +1859,144 @@ html.sheet-open, body.sheet-open {
   transition: background 0.18s;
   gap: 10px;
 }
-.search-result:hover, .saved-loc:hover { background: rgba(255,255,255,0.12); }
-.saved-loc.current {
-  background: rgba(110,195,255,0.18);
-  border-color: rgba(110,195,255,0.4);
-}
-.search-result-main, .saved-loc-main {
+.search-result:hover { background: rgba(255,255,255,0.12); }
+.search-result-main {
   font-size: 15px;
   font-weight: 500;
   flex: 1;
   min-width: 0;
 }
-.search-result-sub, .saved-loc-sub {
+.search-result-sub {
   font-size: 12px;
   color: var(--fg-3);
   margin-top: 2px;
 }
-.saved-loc-del {
-  width: 28px; height: 28px;
-  border-radius: 50%;
-  background: rgba(255,80,80,0.22);
-  border: 1px solid rgba(255,100,100,0.3);
-  color: #ff9898;
-  font-size: 16px;
-  display: flex; align-items: center; justify-content: center;
+
+/* Saved locations — widget cards with live weather */
+.saved-loc {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  padding: 14px 16px 13px;
+  border-radius: 18px;
+  margin-bottom: 9px;
+  cursor: pointer;
+  background: linear-gradient(140deg, #2a3552, #131a2e);
+  border: 1px solid var(--glass-border-soft);
+  overflow: hidden;
+  isolation: isolate;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  min-height: 86px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+}
+.saved-loc:active { transform: scale(0.985); }
+.saved-loc::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 120% at 20% 0%, rgba(255,255,255,0.18), transparent 55%);
+  pointer-events: none;
+  z-index: 0;
+}
+.saved-loc > * { position: relative; z-index: 1; }
+.saved-loc.current {
+  border-color: rgba(255,255,255,0.55);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.18), 0 8px 22px rgba(0,0,0,0.35);
+}
+.saved-loc-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+.saved-loc-name {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.2px;
+}
+.saved-loc-current-pill {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.22);
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.34);
   flex-shrink: 0;
 }
+.saved-loc-sub {
+  font-size: 11.5px;
+  color: rgba(255,255,255,0.74);
+  letter-spacing: 0.1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.saved-loc-temp {
+  grid-row: span 3;
+  align-self: center;
+  font-family: var(--font-display);
+  font-size: 38px;
+  font-weight: 300;
+  color: #fff;
+  font-feature-settings: "tnum";
+  line-height: 1;
+  letter-spacing: -1.5px;
+}
+.saved-loc-temp sup { font-size: 22px; font-weight: 300; vertical-align: top; top: 6px; position: relative; }
+.saved-loc-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.86);
+  margin-top: 4px;
+}
+.saved-loc-meta svg { width: 14px; height: 14px; }
+.saved-loc-meta .sep { opacity: 0.45; }
+.saved-loc-del {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.32);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 2;
+  opacity: 0.65;
+  transition: opacity 0.18s, background 0.18s;
+}
+.saved-loc-del:hover { opacity: 1; background: rgba(255,80,80,0.7); }
+.saved-loc.is-loading { background: linear-gradient(140deg, #1f2840, #131a2e); }
+.saved-loc-skel {
+  display: inline-block;
+  background: rgba(255,255,255,0.12);
+  border-radius: 4px;
+  height: 12px; width: 60px;
+  animation: skel 1.4s ease-in-out infinite;
+}
+@keyframes skel { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
+/* Weather gradient backgrounds */
+.bg-clear   { background: linear-gradient(155deg, #4a90e2, #1a3672); }
+.bg-partly  { background: linear-gradient(155deg, #5a7ea8, #1f2d4a); }
+.bg-cloudy  { background: linear-gradient(155deg, #6b7589, #232a3c); }
+.bg-fog     { background: linear-gradient(155deg, #7a8497, #2a2f3e); }
+.bg-rain    { background: linear-gradient(155deg, #4a6285, #1a2540); }
+.bg-snow    { background: linear-gradient(155deg, #8ba8c8, #2a3a55); }
+.bg-thunder { background: linear-gradient(155deg, #4a4566, #1a1828); }
+.bg-night   { background: linear-gradient(155deg, #1a2347, #060c1c); }
 .section-label {
   font-size: 10.5px;
   text-transform: uppercase;
@@ -4310,13 +4423,6 @@ function renderTiles(d) {
       <div class="tile-sub">${cloudCover < 25 ? 'Heiter' : cloudCover < 60 ? 'Teils bewölkt' : cloudCover < 90 ? 'Stark bewölkt' : 'Bedeckt'}</div>
     </div>
 
-    <div class="tile glass" data-tile="precip">
-      <div class="tile-label">Regenwahrscheinlichkeit</div>
-      <div class="tile-value">${fmt1(popNow)}<span class="tile-value-unit">%</span></div>
-      <div class="tile-bar"><div class="tile-bar-fill" style="width:${popNow}%;"></div></div>
-      <div class="tile-sub">${precNext > 0 ? precNext.toFixed(1) + ' mm jetzt' : 'kein Regen'}</div>
-    </div>
-
     <div class="tile glass" data-tile="aqi">
       <div class="tile-label">Luftqualität</div>
       <div class="tile-value">${aqi == null ? '–' : Math.round(aqi)}</div>
@@ -5366,6 +5472,9 @@ function loadSettings() {
       DEFAULT_SETTINGS.order.forEach(k => { if (!known.includes(k)) known.push(k); });
       out.order = known;
     }
+    if (s.forecastDays === 5 || s.forecastDays === 10 || s.forecastDays === 'all') {
+      out.forecastDays = s.forecastDays;
+    }
     return out;
   } catch(e) { return JSON.parse(JSON.stringify(DEFAULT_SETTINGS)); }
 }
@@ -5403,17 +5512,43 @@ function applySettings() {
   rightOrdered.forEach(k => right.appendChild(cardEls[k]));
 }
 
+let _settingsOpen = false;
 function openSettings() {
+  if (_settingsOpen) return;
+  _settingsOpen = true;
+  lockScroll();
   document.getElementById('settingsSheet').classList.add('show');
   document.getElementById('settingsBackdrop').classList.add('show');
   renderSettingsUI();
 }
 function closeSettings() {
+  if (!_settingsOpen) return;
+  _settingsOpen = false;
   document.getElementById('settingsSheet').classList.remove('show');
   document.getElementById('settingsBackdrop').classList.remove('show');
+  unlockScroll();
 }
 
 function renderSettingsUI() {
+  // Forecast days segment
+  const seg = document.getElementById('forecastDaysSeg');
+  if (seg) {
+    seg.querySelectorAll('button').forEach(btn => {
+      const v = btn.dataset.days === 'all' ? 'all' : parseInt(btn.dataset.days, 10);
+      btn.classList.toggle('active', v === settings.forecastDays);
+      btn.onclick = () => {
+        settings.forecastDays = v;
+        saveSettings();
+        seg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+        // Re-render forecast immediately if data is loaded
+        if (state.data) {
+          const nowI = findNowIndex(state.data.hourly.time);
+          renderForecast(state.data.daily, state.data.hourly, nowI);
+        }
+      };
+    });
+  }
+
   // Visibility list
   const list = document.getElementById('settingsList');
   let html = '';
@@ -5637,19 +5772,115 @@ function closeSheet() {
   document.activeElement && document.activeElement.blur();
   unlockScroll();
 }
+// Map weather code → bg gradient class
+function bgClassFromCode(code, isDay) {
+  if (!isDay) return 'bg-night';
+  if (code === 0 || code === 1) return 'bg-clear';
+  if (code === 2) return 'bg-partly';
+  if (code === 3) return 'bg-cloudy';
+  if (code === 45 || code === 48) return 'bg-fog';
+  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return 'bg-rain';
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'bg-snow';
+  if (code >= 95) return 'bg-thunder';
+  return 'bg-cloudy';
+}
+
 function renderSavedList() {
   const list = document.getElementById('savedList');
   if (!state.locations.length) { list.innerHTML = ''; return; }
+
+  // Build skeleton cards immediately for snappy UI
   list.innerHTML = '<div class="section-label">Gespeichert</div>' +
-    state.locations.map((l, i) => `
-      <div class="saved-loc ${i===state.idx?'current':''}" data-sel="${i}">
-        <div class="saved-loc-main">
-          <div>${escapeHtml(l.name)}</div>
-          <div class="saved-loc-sub">${escapeHtml([l.admin1, l.country].filter(Boolean).join(', '))}</div>
+    state.locations.map((l, i) => {
+      const isCur = i === state.idx;
+      // If this is the active location, we already have data; render fully now
+      if (isCur && state.data) {
+        return _savedLocCard(l, i, state.data, true);
+      }
+      // Try cached data from previous loads
+      const cacheKey = l.latitude.toFixed(3) + ',' + l.longitude.toFixed(3);
+      const c = state.cache[cacheKey];
+      if (c && c.data) return _savedLocCard(l, i, c.data, isCur);
+      // Pure skeleton
+      return `<div class="saved-loc is-loading" data-sel="${i}">
+        <div>
+          <div class="saved-loc-name-row">
+            <div class="saved-loc-name">${escapeHtml(l.name)}</div>
+            ${isCur ? '<span class="saved-loc-current-pill">Aktuell</span>' : ''}
+          </div>
+          <div class="saved-loc-sub">${escapeHtml([l.admin1, l.country].filter(Boolean).join(', ')) || '—'}</div>
+          <div class="saved-loc-meta"><span class="saved-loc-skel"></span></div>
         </div>
+        <div class="saved-loc-temp">—<sup>°</sup></div>
         <button class="saved-loc-del" data-del="${i}" aria-label="Entfernen">×</button>
-      </div>`).join('');
+      </div>`;
+    }).join('');
+  _wireSavedList(list);
+
+  // Lazily fetch weather for any location not yet covered, sequentially with
+  // small delays so we don't trip Open-Meteo's per-second limit.
+  (async () => {
+    for (let i = 0; i < state.locations.length; i++) {
+      const l = state.locations[i];
+      const cacheKey = l.latitude.toFixed(3) + ',' + l.longitude.toFixed(3);
+      const c = state.cache[cacheKey];
+      const fresh = c && (Date.now() - c.ts) < 30 * 60 * 1000;
+      if (fresh) continue;
+      // Skip the active location (already covered)
+      if (i === state.idx && state.data) continue;
+      try {
+        const data = await fetchWeather(l.latitude, l.longitude);
+        // Re-render only this card if the sheet is still open
+        if (!_searchSheetOpen) return;
+        const cardEl = list.querySelector(`[data-sel="${i}"]`);
+        if (cardEl) {
+          const tmp = document.createElement('div');
+          tmp.innerHTML = _savedLocCard(l, i, data, i === state.idx);
+          cardEl.replaceWith(tmp.firstChild);
+        }
+        _wireSavedList(list);
+      } catch(e) {
+        // ignore — keep skeleton
+      }
+    }
+  })();
+}
+
+function _savedLocCard(l, i, data, isCurrent) {
+  const cur = data.current || {};
+  const daily = data.daily || {};
+  const t = cur.temperature_2m;
+  const code = cur.weather_code;
+  const isDay = cur.is_day === 1;
+  const w = wc(code, isDay);
+  const bg = bgClassFromCode(code, isDay);
+  const tMax = daily.temperature_2m_max?.[0];
+  const tMin = daily.temperature_2m_min?.[0];
+  const wind = cur.wind_speed_10m;
+  const subParts = [l.admin1, l.country].filter(Boolean);
+  const sub = subParts.join(', ') || w.desc;
+  return `<div class="saved-loc ${bg} ${isCurrent ? 'current' : ''}" data-sel="${i}">
+    <div>
+      <div class="saved-loc-name-row">
+        <div class="saved-loc-name">${escapeHtml(l.name)}</div>
+        ${isCurrent ? '<span class="saved-loc-current-pill">Aktuell</span>' : ''}
+      </div>
+      <div class="saved-loc-sub">${escapeHtml(sub)}</div>
+      <div class="saved-loc-meta">
+        <svg><use href="#${w.icon}"/></svg>
+        <span>${escapeHtml(w.desc)}</span>
+        ${tMax != null && tMin != null ? `<span class="sep">·</span><span>↑${fmt1(tMax)}° ↓${fmt1(tMin)}°</span>` : ''}
+        ${wind != null ? `<span class="sep">·</span><span>${fmt1(wind)} km/h</span>` : ''}
+      </div>
+    </div>
+    <div class="saved-loc-temp">${t != null ? Math.round(t) : '—'}<sup>°</sup></div>
+    <button class="saved-loc-del" data-del="${i}" aria-label="Entfernen">×</button>
+  </div>`;
+}
+
+function _wireSavedList(list) {
   list.querySelectorAll('[data-del]').forEach(b => {
+    if (b._wired) return; b._wired = true;
     b.addEventListener('click', e => {
       e.stopPropagation();
       const i = +b.dataset.del;
@@ -5662,6 +5893,7 @@ function renderSavedList() {
     });
   });
   list.querySelectorAll('[data-sel]').forEach(el => {
+    if (el._wired) return; el._wired = true;
     el.addEventListener('click', () => {
       const i = +el.dataset.sel;
       state.idx = i;
