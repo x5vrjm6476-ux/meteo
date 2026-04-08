@@ -93,34 +93,54 @@ svg { display: block; }
     linear-gradient(180deg, rgba(0,0,0,0.20) 0%, transparent 14%);
 }
 
-/* Frosted glass strip pinned to the bottom of the viewport. Fades from
-   fully blurred & slightly dark at the very bottom (where the Safari
-   URL-bar lives) to barely-visible at the top, giving the iOS-Weather
-   "content disappears under glass" effect. */
+/* Progressive frosted blur strip — pinned to the bottom of the viewport.
+   No color tint at all; instead we stack 4 layers, each with its own
+   backdrop-filter strength, and mask each one into a horizontal band so
+   the blur smoothly ramps from "barely blurred" near the top to
+   "heavily blurred" at the very bottom. The bottom edge of the strip
+   sits behind the iOS Safari URL bar (height set in JS to match
+   window.innerHeight - visualViewport.height + a buffer). */
 .bottom-fade {
   position: fixed;
   left: 0; right: 0;
   bottom: 0;
-  height: calc(env(safe-area-inset-bottom) + 90px);
+  /* Default height — JS adjusts at runtime to cover Safari UI overlap. */
+  height: calc(env(safe-area-inset-bottom) + 110px);
   pointer-events: none;
   z-index: 50;
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
-  backdrop-filter: blur(18px) saturate(150%);
-  background: linear-gradient(to top,
-    rgba(8,12,28,0.55) 0%,
-    rgba(8,12,28,0.30) 35%,
-    rgba(8,12,28,0.10) 65%,
-    rgba(8,12,28,0.00) 100%);
-  -webkit-mask-image: linear-gradient(to top,
-    #000 0%,
-    #000 55%,
-    rgba(0,0,0,0.55) 80%,
-    rgba(0,0,0,0) 100%);
-  mask-image: linear-gradient(to top,
-    #000 0%,
-    #000 55%,
-    rgba(0,0,0,0.55) 80%,
-    rgba(0,0,0,0) 100%);
+}
+.bottom-fade-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+/* Layer 1: very subtle blur, blanket the top portion (fades in early) */
+.bottom-fade-layer[data-blur="2"] {
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  -webkit-mask-image: linear-gradient(to top, #000 75%, rgba(0,0,0,0) 100%);
+          mask-image: linear-gradient(to top, #000 75%, rgba(0,0,0,0) 100%);
+}
+/* Layer 2: medium-light blur, fades in around the middle */
+.bottom-fade-layer[data-blur="6"] {
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, #000 55%, rgba(0,0,0,0) 78%);
+          mask-image: linear-gradient(to top, #000 0%, #000 55%, rgba(0,0,0,0) 78%);
+}
+/* Layer 3: stronger blur, lower half */
+.bottom-fade-layer[data-blur="12"] {
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, #000 35%, rgba(0,0,0,0) 60%);
+          mask-image: linear-gradient(to top, #000 0%, #000 35%, rgba(0,0,0,0) 60%);
+}
+/* Layer 4: heaviest blur, only the very bottom (under Safari UI) */
+.bottom-fade-layer[data-blur="22"] {
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, #000 18%, rgba(0,0,0,0) 42%);
+          mask-image: linear-gradient(to top, #000 0%, #000 18%, rgba(0,0,0,0) 42%);
 }
 
 /* Grain overlay for film-like quality */
@@ -946,14 +966,466 @@ svg { display: block; }
   background: linear-gradient(90deg, rgba(255,255,255,0.12), transparent);
 }
 
-/* MAP CARD */
-.map-card { padding: 0; overflow: hidden; }
-.map-card .card-head {
-  padding: 18px 20px 12px;
-  margin: 0;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-  flex-wrap: wrap;
+/* =============================================================
+   FULLSCREEN RADAR OVERLAY — Apple-Weather-inspired
+   ============================================================= */
+.radar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 260;
+  background: #06080f;
+  display: none;
+  opacity: 0;
+  transition: opacity 0.32s ease;
 }
+.radar-overlay.show {
+  display: block;
+  opacity: 1;
+}
+.radar-overlay #map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: #06080f;
+  z-index: 1;
+}
+/* Gentle top fade so buttons/legend always read over tiles */
+.radar-overlay::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: calc(env(safe-area-inset-top) + 140px);
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(180deg, rgba(6,8,15,0.55) 0%, rgba(6,8,15,0.18) 55%, rgba(6,8,15,0) 100%);
+}
+
+/* --- Floating glass buttons (FABs) --- */
+.radar-fab {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  background: rgba(22, 28, 46, 0.72);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow:
+    0 1px 0 0 rgba(255,255,255,0.16) inset,
+    0 8px 22px rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  transition: background 0.18s, transform 0.12s;
+}
+.radar-fab:hover { background: rgba(32, 40, 64, 0.85); }
+.radar-fab:active { transform: scale(0.94); }
+.radar-fab svg { fill: none; stroke: currentColor; }
+.radar-fab-close {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 14px);
+  left: 16px;
+  z-index: 12;
+}
+
+/* Stacked pill containing layers + locate buttons, and a separate list pill */
+.radar-right {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 14px);
+  right: 16px;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+.radar-fab-stack {
+  display: flex;
+  flex-direction: column;
+  background: rgba(22, 28, 46, 0.72);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 999px;
+  padding: 4px;
+  gap: 4px;
+  box-shadow:
+    0 1px 0 0 rgba(255,255,255,0.16) inset,
+    0 8px 22px rgba(0,0,0,0.4);
+}
+.radar-fab-stack .radar-fab {
+  width: 40px; height: 40px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.radar-fab-stack .radar-fab:hover { background: rgba(255,255,255,0.10); }
+.radar-fab-stack .radar-fab.active { background: rgba(255,255,255,0.18); }
+
+/* Vertical precipitation legend (left, below close button) */
+.radar-legend {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 76px);
+  left: 16px;
+  z-index: 11;
+  width: 130px;
+  padding: 14px 14px 14px 14px;
+  background: rgba(22, 28, 46, 0.66);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  backdrop-filter: blur(22px) saturate(170%);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 22px;
+  box-shadow:
+    0 1px 0 0 rgba(255,255,255,0.14) inset,
+    0 10px 28px rgba(0,0,0,0.4);
+  color: #fff;
+  transition: opacity 0.2s;
+}
+.radar-legend[hidden] { display: none; }
+.radar-legend-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  margin-bottom: 10px;
+}
+.radar-legend-body {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+  height: 150px;
+}
+.radar-legend-bar {
+  width: 6px;
+  border-radius: 3px;
+  /* Apple-Weather rain scale — top = extreme, bottom = light */
+  background: linear-gradient(to bottom,
+    #821eb4 0%,
+    #be288c 12%,
+    #e8423a 25%,
+    #f58c2d 40%,
+    #f5cd3c 55%,
+    #78d246 70%,
+    #2ebe8c 82%,
+    #81c4ff 100%);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.10) inset;
+}
+.radar-legend[data-kind="temp"] .radar-legend-bar {
+  background: linear-gradient(to bottom,
+    #8c1d2a 0%, #e0623c 15%, #f5b257 30%, #f5e577 45%,
+    #c0e0c0 60%, #8cd0e0 72%, #57a0d8 84%, #3a6dc4 94%, #2c3e80 100%);
+}
+.radar-legend[data-kind="clouds"] .radar-legend-bar {
+  background: linear-gradient(to bottom,
+    rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.50) 50%, rgba(255,255,255,0.08) 100%);
+}
+.radar-legend-labels {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.78);
+  letter-spacing: 0.1px;
+}
+
+/* Layer picker popover */
+.radar-layer-menu {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 66px);
+  right: 16px;
+  z-index: 14;
+  min-width: 180px;
+  padding: 6px;
+  background: rgba(22, 28, 46, 0.78);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 18px;
+  box-shadow:
+    0 1px 0 0 rgba(255,255,255,0.18) inset,
+    0 14px 32px rgba(0,0,0,0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transform-origin: top right;
+  transform: scale(0.9) translateY(-6px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s;
+}
+.radar-layer-menu:not([hidden]) {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  pointer-events: auto;
+}
+.radar-layer-menu button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-text);
+  text-align: left;
+  width: 100%;
+  transition: background 0.14s;
+}
+.radar-layer-menu button svg { fill: none; stroke: currentColor; color: rgba(255,255,255,0.8); flex-shrink: 0; }
+.radar-layer-menu button:hover { background: rgba(255,255,255,0.10); }
+.radar-layer-menu button.active {
+  background: rgba(110, 195, 255, 0.22);
+  color: #fff;
+}
+.radar-layer-menu button.active svg { color: #6ec3ff; }
+
+/* Locations picker popover (anchored under the list button) */
+.radar-loc-picker {
+  position: absolute;
+  top: calc(env(safe-area-inset-top) + 122px);
+  right: 16px;
+  z-index: 14;
+  width: 280px;
+  max-height: 60vh;
+  padding: 14px 14px 10px;
+  background: rgba(22, 28, 46, 0.82);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 22px;
+  box-shadow:
+    0 1px 0 0 rgba(255,255,255,0.18) inset,
+    0 14px 32px rgba(0,0,0,0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transform-origin: top right;
+  transform: scale(0.92) translateY(-6px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s;
+}
+.radar-loc-picker:not([hidden]) {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+  pointer-events: auto;
+}
+.radar-loc-picker-head {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.62);
+  padding: 2px 6px 4px;
+}
+.radar-loc-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  max-height: calc(60vh - 50px);
+  padding-right: 2px;
+}
+.radar-loc-picker-list::-webkit-scrollbar { width: 6px; }
+.radar-loc-picker-list::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.18);
+  border-radius: 3px;
+}
+.radar-loc-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  color: #fff;
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+  transition: background 0.14s;
+}
+.radar-loc-row:hover { background: rgba(255,255,255,0.10); }
+.radar-loc-row.active {
+  background: rgba(110, 195, 255, 0.22);
+}
+.radar-loc-row svg {
+  width: 16px; height: 16px;
+  flex-shrink: 0;
+  color: rgba(255,255,255,0.62);
+  fill: none; stroke: currentColor;
+}
+.radar-loc-row.active svg { color: #6ec3ff; }
+.radar-loc-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.radar-loc-row-name {
+  font-family: var(--font-text);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.radar-loc-row-sub {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255,255,255,0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+.radar-loc-empty {
+  padding: 16px 8px;
+  text-align: center;
+  font-size: 13px;
+  color: rgba(255,255,255,0.55);
+}
+
+/* Bottom control pill — pl/title/range + slider */
+.radar-bottom-bar {
+  position: absolute;
+  left: 14px; right: 14px;
+  bottom: calc(env(safe-area-inset-bottom) + 18px);
+  z-index: 12;
+  padding: 12px 14px 14px;
+  background: rgba(15, 20, 36, 0.72);
+  -webkit-backdrop-filter: blur(26px) saturate(180%);
+  backdrop-filter: blur(26px) saturate(180%);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 26px;
+  box-shadow:
+    0 1px 0 0 rgba(255,255,255,0.16) inset,
+    0 16px 40px rgba(0,0,0,0.5);
+  color: #fff;
+}
+.radar-bottom-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.radar-play {
+  width: 42px; height: 42px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.14);
+  border: 1px solid rgba(255,255,255,0.20);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  transition: background 0.18s, transform 0.12s;
+}
+.radar-play:hover { background: rgba(255,255,255,0.24); }
+.radar-play:active { transform: scale(0.94); }
+.radar-play svg { fill: currentColor; }
+.radar-bottom-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.radar-bottom-title {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.radar-bottom-sub {
+  font-size: 12px;
+  color: rgba(255,255,255,0.68);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.radar-range-seg {
+  display: flex;
+  background: rgba(255,255,255,0.10);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.radar-range-seg button {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.72);
+  transition: background 0.18s, color 0.18s;
+  font-feature-settings: "tnum";
+}
+.radar-range-seg button.active {
+  background: rgba(255,255,255,0.22);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+}
+.radar-slider-wrap {
+  margin-top: 12px;
+  position: relative;
+}
+.radar-slider-wrap input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.22);
+  outline: none;
+  display: block;
+}
+.radar-slider-wrap input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 10px rgba(110,195,255,0.6);
+  cursor: pointer;
+}
+.radar-slider-wrap input[type="range"]::-moz-range-thumb {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--accent);
+  cursor: pointer;
+}
+.radar-ticks {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 2px 0;
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.56);
+  letter-spacing: 0.3px;
+  font-feature-settings: "tnum";
+}
+.radar-ticks span {
+  position: relative;
+  text-align: center;
+  min-width: 0;
+}
+.radar-ticks span.is-now { color: #fff; }
+
+/* Tile styling tweaks */
+.radar-tiles { filter: saturate(1.15) contrast(1.05); }
+.radar-tiles img { transition: opacity 0.22s ease; }
+
+/* When the overlay is open, hide floating app chrome */
+body.radar-open .bottom-fade { display: none; }
+body.radar-open .topbar { opacity: 0; pointer-events: none; }
+
 .map-tabs { display: flex; gap: 5px; flex-wrap: wrap; }
 .chip {
   padding: 6px 12px;
@@ -1083,24 +1555,6 @@ svg { display: block; }
 .map-empty[hidden] { display: none; }
 .map-empty svg { color: #ffd66e; flex-shrink: 0; }
 
-/* Map fullscreen state */
-.map-card.fullscreen {
-  position: fixed !important;
-  inset: 0;
-  z-index: 250;
-  border-radius: 0;
-  margin: 0;
-  width: 100vw;
-  height: 100dvh;
-  display: flex;
-  flex-direction: column;
-}
-.map-card.fullscreen #map { flex: 1; height: auto; min-height: 0; }
-.map-card.fullscreen .card-head { padding-top: calc(env(safe-area-inset-top) + 14px); }
-.map-card.fullscreen .time-bar { padding-bottom: calc(env(safe-area-inset-bottom) + 12px); }
-/* Hide the bottom-fade overlay while the map is fullscreen so radar
-   controls aren't dimmed/blurred. */
-body.map-fullscreen .bottom-fade { display: none; }
 /* While a sheet/modal is open, the fade is fully covered by the sheet —
    hiding it avoids any sub-pixel bleed at the sheet edges. */
 body.sheet-open .bottom-fade { display: none; }
@@ -2378,6 +2832,14 @@ html.sheet-open, body.sheet-open {
     <symbol id="i-x" viewBox="0 0 24 24">
       <path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
     </symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24">
+      <path d="M12 3 L21 8 L12 13 L3 8 Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+      <path d="M4.5 12 L12 16 L19.5 12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" opacity="0.75"/>
+      <path d="M4.5 16 L12 20 L19.5 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+    </symbol>
+    <symbol id="i-locate" viewBox="0 0 24 24">
+      <path d="M20 4 L4 11 L11 13 L13 20 Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+    </symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4 L20 12 L7 20 Z" fill="currentColor"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/></symbol>
     <symbol id="i-wind" viewBox="0 0 24 24">
@@ -2452,8 +2914,106 @@ html.sheet-open, body.sheet-open {
   <div class="bg-fog" id="bgFog"></div>
 </div>
 
-<!-- Frosted bottom strip — sits above content, under sheets/modals -->
-<div class="bottom-fade" id="bottomFade"></div>
+<!-- Frosted bottom strip — multi-layer JS-driven gradient blur, sits above content but under Safari UI -->
+<div class="bottom-fade" id="bottomFade">
+  <div class="bottom-fade-layer" data-blur="2"></div>
+  <div class="bottom-fade-layer" data-blur="6"></div>
+  <div class="bottom-fade-layer" data-blur="12"></div>
+  <div class="bottom-fade-layer" data-blur="22"></div>
+</div>
+
+<!-- ============ FULLSCREEN RADAR OVERLAY (Apple-Weather style) ============ -->
+<div class="radar-overlay" id="radarOverlay" aria-hidden="true">
+  <div id="map">
+    <div class="map-empty" id="mapEmpty" hidden>
+      <svg width="14" height="14"><use href="#i-info"/></svg>
+      <span>Kein Niederschlag im Sichtbereich</span>
+    </div>
+  </div>
+
+  <!-- Top-left close -->
+  <button class="radar-fab radar-fab-close" id="radarOverlayClose" aria-label="Schliessen">
+    <svg width="18" height="18"><use href="#i-x"/></svg>
+  </button>
+
+  <!-- Vertical precipitation legend (left) -->
+  <div class="radar-legend" id="radarLegend" data-kind="radar">
+    <div class="radar-legend-title" id="radarLegendTitle">Niederschlag</div>
+    <div class="radar-legend-body">
+      <div class="radar-legend-bar" id="radarLegendBar"></div>
+      <div class="radar-legend-labels" id="radarLegendLabels">
+        <span>Extrem</span>
+        <span>Stark</span>
+        <span>Mäßig</span>
+        <span>Leicht</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right-side button stack -->
+  <div class="radar-right">
+    <div class="radar-fab-stack">
+      <button class="radar-fab" id="radarLayersBtn" aria-label="Ebenen">
+        <svg width="18" height="18"><use href="#i-layers"/></svg>
+      </button>
+      <button class="radar-fab" id="radarOverlayLocate" aria-label="Standort zentrieren">
+        <svg width="18" height="18"><use href="#i-locate"/></svg>
+      </button>
+    </div>
+    <button class="radar-fab radar-fab-solo" id="radarListBtn" aria-label="Standorte">
+      <svg width="18" height="18"><use href="#i-list"/></svg>
+    </button>
+  </div>
+
+  <!-- Locations picker popover (opens from list button, top-right) -->
+  <div class="radar-loc-picker" id="radarLocPicker" hidden>
+    <div class="radar-loc-picker-head">Standorte</div>
+    <div class="radar-loc-picker-list" id="radarLocPickerList"></div>
+  </div>
+
+  <!-- Layer picker popover -->
+  <div class="radar-layer-menu" id="radarLayerMenu" hidden>
+    <button data-layer="radar" class="active">
+      <svg width="16" height="16"><use href="#i-rain"/></svg>
+      <span>Niederschlag</span>
+    </button>
+    <button data-layer="clouds">
+      <svg width="16" height="16"><use href="#i-cloud"/></svg>
+      <span>Wolken</span>
+    </button>
+  </div>
+
+  <!-- Bottom control pill -->
+  <div class="radar-bottom-bar">
+    <div class="radar-bottom-top">
+      <button class="radar-play" id="radarPlay" aria-label="Abspielen">
+        <svg width="16" height="16"><use id="radarPlayIcon" href="#i-play"/></svg>
+      </button>
+      <div class="radar-bottom-info">
+        <div class="radar-bottom-title" id="radarTime">Vorhersage</div>
+        <div class="radar-bottom-sub" id="radarDate">—</div>
+      </div>
+      <div class="radar-range-seg" id="radarRangeSeg">
+        <button data-range="2">2 Std.</button>
+        <button data-range="12" class="active">12 Std.</button>
+      </div>
+    </div>
+    <div class="radar-slider-wrap">
+      <input type="range" id="radarSlider" min="0" max="0" value="0" step="0.05" aria-label="Zeit">
+      <div class="radar-ticks" id="radarTicks"></div>
+    </div>
+  </div>
+
+  <!-- Hidden compat stubs so legacy JS hooks never crash -->
+  <div id="mapLegend" hidden>
+    <span id="legendTitle"></span>
+    <span id="legendMin"></span>
+    <div id="legendBar"></div>
+    <span id="legendMax"></span>
+    <span id="radarRange"></span>
+  </div>
+  <button id="mapFullscreen" hidden></button>
+</div>
 
 <!-- ============ APP ============ -->
 <div class="app">
@@ -2672,12 +3232,23 @@ const state = {
   baseLayerName: 'light',
   radarLayer: null,
   cloudsLayer: null,
+  cloudsInterpLayer: null,      // _InterpLayer instance for Open-Meteo cloud_cover
+  forecastInterpLayer: null,    // _InterpLayer instance for Open-Meteo precipitation forecast
   rainViewer: null,
   radarFrames: [],
+  radarPool: [],
+  radarHost: null,
+  radarNowIdx: 0,
   radarIdx: 0,
   radarPlaying: false,
   radarTimer: null,
+  radarRangeHours: 12,          // forecast horizon: 2 h (15-min steps) or 12 h (hourly)
+  radarOverlayLayer: 'radar',   // 'radar' | 'temp' | 'clouds'
+  forecastLayer: null,          // L.Layer HeatmapLayer instance for rain
+  tempLayer: null,              // _InterpLayer instance for temperature
+  forecastReloadTimer: null,
   showRadar: true,
+  showTemp: false,
   showClouds: false,
   userMarkers: [],
   loading: false,
@@ -2829,9 +3400,13 @@ function _savePersistCache() {
   }, 250);
 }
 
-// ---- Global Open-Meteo throttle: never run two requests within 800 ms
+// ---- Global Open-Meteo throttle ----
+// Open-Meteo's free tier counts EACH LOCATION in a bulk request as 1 weighted
+// API call (cap 600/min, 5000/h, 10000/day). A radar fetch with 84 lat/lng
+// pairs already burns ~84 of those, so we keep a generous gap between any
+// two consecutive HTTP requests to spread the budget over time.
 let _omLastFetch = 0;
-const OM_MIN_GAP = 800;
+const OM_MIN_GAP = 1200;
 async function _omGate() {
   const now = Date.now();
   const wait = _omLastFetch + OM_MIN_GAP - now;
@@ -3268,6 +3843,312 @@ const BASE_LABELS = {
   }
 };
 
+// ============ HEATMAP LAYER (custom, canvas-based) ============
+// One screen-sized <canvas> in a dedicated pane. CSS/ctx blur takes care
+// of smoothing, so a coarse grid of weighted points renders as a clean
+// Apple-Weather-style heatmap without any external library.
+let _HeatmapLayer = null;
+function _defineHeatmapLayer() {
+  if (_HeatmapLayer || typeof L === 'undefined') return _HeatmapLayer;
+  _HeatmapLayer = L.Layer.extend({
+    initialize: function(opts) {
+      opts = opts || {};
+      this._radius  = opts.radius != null ? opts.radius : 70;
+      this._blur    = opts.blur   != null ? opts.blur   : 36;
+      this._opacity = opts.opacity != null ? opts.opacity : 0.85;
+      this._paneName = opts.pane || 'radarPane';
+      this._blend    = opts.blendMode || 'normal';
+      this._colorFn  = opts.colorFn || (() => 'rgba(255,255,255,0.5)');
+      this._points   = [];
+    },
+    setData: function(points) { this._points = points || []; this._redraw(); return this; },
+    setColorFn: function(fn)  { this._colorFn = fn; this._redraw(); return this; },
+    setOpacity: function(o)   { this._opacity = o; if (this._canvas) this._canvas.style.opacity = String(o); return this; },
+    onAdd: function(map) {
+      this._map = map;
+      const c = L.DomUtil.create('canvas', 'weather-heatmap-canvas');
+      c.style.position = 'absolute';
+      c.style.pointerEvents = 'none';
+      c.style.opacity = String(this._opacity);
+      c.style.mixBlendMode = this._blend;
+      this._canvas = c;
+      map.getPane(this._paneName).appendChild(c);
+      this._onReset = this._reset.bind(this);
+      this._onMove  = this._positionCanvas.bind(this);
+      map.on('moveend resize zoomend viewreset', this._onReset);
+      map.on('move', this._onMove);
+      this._reset();
+    },
+    onRemove: function(map) {
+      if (this._onReset) map.off('moveend resize zoomend viewreset', this._onReset);
+      if (this._onMove)  map.off('move', this._onMove);
+      if (this._canvas && this._canvas.parentNode) this._canvas.parentNode.removeChild(this._canvas);
+      this._canvas = null;
+      this._map = null;
+    },
+    _positionCanvas: function() {
+      if (!this._canvas || !this._map) return;
+      const tl = this._map.containerPointToLayerPoint([0, 0]);
+      L.DomUtil.setPosition(this._canvas, tl);
+    },
+    _reset: function() {
+      if (!this._map || !this._canvas) return;
+      const size = this._map.getSize();
+      if (this._canvas.width !== size.x) this._canvas.width = size.x;
+      if (this._canvas.height !== size.y) this._canvas.height = size.y;
+      this._positionCanvas();
+      this._redraw();
+    },
+    _redraw: function() {
+      if (!this._canvas || !this._map) return;
+      const ctx = this._canvas.getContext('2d');
+      const w = this._canvas.width, h = this._canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      if (!this._points.length) return;
+      ctx.save();
+      ctx.filter = `blur(${this._blur}px)`;
+      const pad = this._radius + this._blur + 20;
+      for (let i = 0; i < this._points.length; i++) {
+        const p = this._points[i];
+        if (p.v == null || isNaN(p.v)) continue;
+        const pt = this._map.latLngToContainerPoint([p.lat, p.lng]);
+        if (pt.x < -pad || pt.y < -pad || pt.x > w + pad || pt.y > h + pad) continue;
+        const color = this._colorFn(p.v);
+        if (!color) continue;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, this._radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  });
+  return _HeatmapLayer;
+}
+
+// ============ BILINEAR INTERPOLATION LAYER (anchored canvas heatmap) ============
+// Paints every pixel of a screen-sized canvas using bilinear interpolation
+// over a STRUCTURED lat/lng grid (rows × cols). This is much sharper than
+// IDW point-spray and dramatically faster (4 lookups per pixel instead of
+// 96 distance computations).
+//
+// The canvas lives inside its own map pane (e.g. radarPane). During a pan
+// the canvas naturally translates with its parent pane, so the heatmap
+// stays anchored to the underlying lat/lng — we only redraw on moveend
+// (and zoomend / resize / viewreset), never on every move tick.
+//
+// Animation: setData() can be called many times per second to swap in
+// time-interpolated grid values; the projection of pixel→latlng is
+// cached on _reset, so per-frame work is O(W·H) cheap arithmetic.
+//
+// Data shape passed to setData():
+//   { cols, rows, latStart, latEnd, lngStart, lngEnd, values }
+// where values is a row-major Float32Array/Array of length cols×rows,
+// with row 0 = latStart (north) and col 0 = lngStart (west).
+let _InterpLayer = null;
+function _defineInterpLayer() {
+  if (_InterpLayer || typeof L === 'undefined') return _InterpLayer;
+  _InterpLayer = L.Layer.extend({
+    initialize: function(opts) {
+      opts = opts || {};
+      this._opacity   = opts.opacity != null ? opts.opacity : 0.85;
+      this._paneName  = opts.pane || 'radarPane';
+      this._step      = opts.step  != null ? opts.step  : 3;
+      this._blurPx    = opts.blur  != null ? opts.blur  : 0;
+      // padFrac: how much MORE area beyond the viewport the canvas covers
+      // (each side). 0.6 means canvas = 2.2× viewport in each dim → user can
+      // pan up to 60 % of viewport before the canvas edge becomes visible.
+      this._padFrac   = opts.padFrac != null ? opts.padFrac : 0.6;
+      this._colorFn   = opts.colorFn || (() => null);
+      this._grid      = null;
+      // Cached pixel→latlng for the current viewport (rebuilt on _reset)
+      this._cellLat = null;
+      this._cellLng = null;
+      this._cellLW  = 0;
+      this._cellLH  = 0;
+      this._padW    = 0;
+      this._padH    = 0;
+    },
+    setData: function(grid) {
+      this._grid = grid || null;
+      this._redraw();
+      return this;
+    },
+    setColorFn: function(fn) {
+      this._colorFn = fn;
+      this._redraw();
+      return this;
+    },
+    setOpacity: function(o) {
+      this._opacity = o;
+      if (this._canvas) this._canvas.style.opacity = String(o);
+      return this;
+    },
+    onAdd: function(map) {
+      this._map = map;
+      const c = L.DomUtil.create('canvas', 'weather-interp-canvas');
+      c.style.position = 'absolute';
+      c.style.pointerEvents = 'none';
+      c.style.opacity = String(this._opacity);
+      c.style.willChange = 'transform';
+      this._canvas = c;
+      map.getPane(this._paneName).appendChild(c);
+      this._onReset = this._reset.bind(this);
+      // Only listen to discrete events. During an active pan we deliberately
+      // do NOT touch the canvas — it sits inside radarPane (a layer pane that
+      // already gets transformed by Leaflet during drag) so it visually
+      // follows the map for free. Setting position on every `move` would
+      // counteract that and pin the heatmap to the screen — exactly what
+      // the user complained about.
+      map.on('moveend resize zoomend viewreset', this._onReset);
+      this._reset();
+    },
+    onRemove: function(map) {
+      if (this._onReset) map.off('moveend resize zoomend viewreset', this._onReset);
+      if (this._canvas && this._canvas.parentNode) this._canvas.parentNode.removeChild(this._canvas);
+      this._canvas = null;
+      this._map = null;
+      this._cellLat = this._cellLng = null;
+    },
+    _positionCanvas: function() {
+      if (!this._canvas || !this._map) return;
+      // Top-left of canvas in CONTAINER coords is (-padW, -padH) so the
+      // canvas extends padFrac × viewport BEYOND the visible area on every
+      // side. Translating to layer coords positions the canvas inside the
+      // parent pane, which itself gets transformed by Leaflet during pan —
+      // so the canvas naturally drifts WITH the map without us touching it.
+      const tl = this._map.containerPointToLayerPoint([-this._padW, -this._padH]);
+      L.DomUtil.setPosition(this._canvas, tl);
+    },
+    _reset: function() {
+      if (!this._map || !this._canvas) return;
+      const size = this._map.getSize();
+      const padW = Math.round(size.x * this._padFrac);
+      const padH = Math.round(size.y * this._padFrac);
+      const W = size.x + 2 * padW;
+      const H = size.y + 2 * padH;
+      if (this._canvas.width  !== W) this._canvas.width  = W;
+      if (this._canvas.height !== H) this._canvas.height = H;
+      this._padW = padW;
+      this._padH = padH;
+      this._buildLatLngCache();
+      this._positionCanvas();
+      this._redraw();
+    },
+    // Precompute the lat/lng of every low-res cell centre for the padded
+    // canvas. Done once per moveend so animation frames are pure arithmetic
+    // on cached values.
+    _buildLatLngCache: function() {
+      const W = this._canvas.width, H = this._canvas.height;
+      const step = this._step;
+      const lw = Math.max(1, Math.ceil(W / step));
+      const lh = Math.max(1, Math.ceil(H / step));
+      const N = lw * lh;
+      if (!this._cellLat || this._cellLat.length !== N) {
+        this._cellLat = new Float32Array(N);
+        this._cellLng = new Float32Array(N);
+      }
+      const padW = this._padW, padH = this._padH;
+      let i = 0;
+      for (let ly = 0; ly < lh; ly++) {
+        // Cell centre in canvas pixels → container coords (subtract pad).
+        const py = ly * step + step / 2 - padH;
+        for (let lx = 0; lx < lw; lx++) {
+          const px = lx * step + step / 2 - padW;
+          const ll = this._map.containerPointToLatLng([px, py]);
+          this._cellLat[i] = ll.lat;
+          this._cellLng[i] = ll.lng;
+          i++;
+        }
+      }
+      this._cellLW = lw;
+      this._cellLH = lh;
+    },
+    _redraw: function() {
+      if (!this._canvas || !this._map) return;
+      const ctx = this._canvas.getContext('2d');
+      const W = this._canvas.width, H = this._canvas.height;
+      ctx.save();
+      ctx.filter = 'none';
+      ctx.clearRect(0, 0, W, H);
+      ctx.restore();
+
+      const grid = this._grid;
+      if (!grid || !grid.values || !grid.values.length) return;
+      if (!this._cellLat || !this._cellLat.length) return;
+
+      const cols = grid.cols, rows = grid.rows;
+      const latStart = grid.latStart, latEnd = grid.latEnd;
+      const lngStart = grid.lngStart, lngEnd = grid.lngEnd;
+      // dLat is negative (north → south), dLng is positive (west → east)
+      const dLat = (latEnd - latStart) / (rows - 1);
+      const dLng = (lngEnd - lngStart) / (cols - 1);
+      const values = grid.values;
+
+      const lw = this._cellLW, lh = this._cellLH;
+      const buf = ctx.createImageData(lw, lh);
+      const data = buf.data;
+      const cellLat = this._cellLat, cellLng = this._cellLng;
+      const colorFn = this._colorFn;
+      const N = lw * lh;
+      const colsM1 = cols - 1, rowsM1 = rows - 1;
+      let i4 = 0;
+      for (let i = 0; i < N; i++) {
+        const lat = cellLat[i];
+        let lng = cellLng[i];
+        // Modulo wrap longitude into [lngStart, lngStart+360) regardless of
+        // how many world copies away the pixel sits — handles worldCopyJump
+        // and large pad areas without seams.
+        lng = ((lng - lngStart) % 360 + 360) % 360 + lngStart;
+        if (lng > lngEnd) lng -= 360;
+
+        const fy = (lat - latStart) / dLat;
+        const fx = (lng - lngStart) / dLng;
+        let v = NaN;
+        if (fx >= 0 && fx <= colsM1 && fy >= 0 && fy <= rowsM1) {
+          const x0 = fx | 0;
+          const y0 = fy | 0;
+          const x1 = x0 < colsM1 ? x0 + 1 : colsM1;
+          const y1 = y0 < rowsM1 ? y0 + 1 : rowsM1;
+          const tx = fx - x0;
+          const ty = fy - y0;
+          const v00 = values[y0 * cols + x0];
+          const v10 = values[y0 * cols + x1];
+          const v01 = values[y1 * cols + x0];
+          const v11 = values[y1 * cols + x1];
+          v = (1 - tx) * (1 - ty) * v00
+            +      tx  * (1 - ty) * v10
+            + (1 - tx) *      ty  * v01
+            +      tx  *      ty  * v11;
+        }
+        const rgba = colorFn(v);
+        if (rgba) {
+          data[i4]     = rgba[0];
+          data[i4 + 1] = rgba[1];
+          data[i4 + 2] = rgba[2];
+          data[i4 + 3] = rgba[3];
+        } else {
+          data[i4 + 3] = 0;
+        }
+        i4 += 4;
+      }
+
+      // Upscale the low-res buffer to full canvas, with optional Gaussian
+      // blur for cloud-like softness.
+      const off = document.createElement('canvas');
+      off.width = lw; off.height = lh;
+      off.getContext('2d').putImageData(buf, 0, 0);
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      if (this._blurPx > 0) ctx.filter = `blur(${this._blurPx}px)`;
+      ctx.drawImage(off, 0, 0, W, H);
+      ctx.restore();
+    }
+  });
+  return _InterpLayer;
+}
+
 function initMap() {
   if (typeof L === 'undefined') {
     document.getElementById('map').innerHTML = '<div class="state-msg">Karte konnte nicht geladen werden.</div>';
@@ -3279,9 +4160,17 @@ function initMap() {
   state.map = L.map('map', {
     center: loc ? [loc.latitude, loc.longitude] : [46.8, 8.3],
     zoom: loc ? 8 : 7,
-    zoomControl: true,
+    // Constrain zoom so the overlay sampling stays viable everywhere — at
+    // minZoom 3 the visible viewport spans roughly half the world (well
+    // within what 180 sampled points + bilinear interpolation can render
+    // smoothly) and the user never hits the "zoom level not supported"
+    // wall on the basemap tiles.
+    minZoom: 3,
+    maxZoom: 18,
+    zoomControl: false,        // no +/- buttons (Apple Weather style)
     attributionControl: true,
-    worldCopyJump: true
+    worldCopyJump: true,
+    zoomSnap: 0.25
   });
 
   // Custom panes for layer ordering — radar above base, labels above radar
@@ -3307,14 +4196,24 @@ function initMap() {
     });
   });
 
-  // Refresh temperature overlay when the user pans / zooms
-  // Also refresh the precipitation forecast grid (debounced) so the dots
-  // always cover the visible map area.
+  // Smart refetch on pan/zoom: the InterpLayer auto re-renders from its
+  // cached values whenever Leaflet fires moveend (its own listener), so
+  // panning inside the cached data area is FREE. We only schedule a new
+  // HTTP fetch if the viewport has actually moved beyond the previously
+  // sampled box, OR the cached data is older than its TTL. This is the
+  // critical optimisation that keeps us under Open-Meteo's quota.
   state.map.on('moveend', () => {
-    if (state.showTemp) showTemperatureOverlay();
-    if (state.showRadar) {
+    if (state.showTemp) {
+      clearTimeout(state._tempReloadTimer);
+      state._tempReloadTimer = setTimeout(() => showTemperatureOverlay(), 3500);
+    }
+    if (state.showClouds && _needsRefetch('clouds')) {
+      clearTimeout(state._cloudsReloadTimer);
+      state._cloudsReloadTimer = setTimeout(() => _fetchAndRenderClouds(), 1200);
+    }
+    if (state.showRadar && _needsRefetch('radar')) {
       clearTimeout(state._radarReloadTimer);
-      state._radarReloadTimer = setTimeout(() => loadRadar(), 1500);
+      state._radarReloadTimer = setTimeout(() => loadRadar(), 1200);
     }
   });
 
@@ -3360,174 +4259,299 @@ function panMapToCurrent() {
   state.map.setView([loc.latitude, loc.longitude], z, { animate: true });
 }
 
-// ============ RADAR (RainViewer real precipitation tiles) ============
-// RainViewer hosts a free, no-key, CORS-enabled tile API with real Doppler
-// radar imagery: ~13 frames over the past 2 hours plus a 30-min nowcast.
-// We pre-create one TileLayer per frame, keep them all on the map but at
-// opacity 0, and just toggle the active one — that's how a smooth radar
-// animation looks (no tile re-load between frames).
-//
-// API contract: https://api.rainviewer.com/public/weather-maps.json returns:
-//   { host, radar: { past: [{path,time}, ...], nowcast: [...] }, ... }
-// Tile URL pattern:  {host}{path}/256/{z}/{x}/{y}/{color}/{options}.png
-//   color  — 1 = original, 2 = universal blue, 4 = TWC, 8 = NEXRAD level III
-//   options = "{smooth}_{snow}" — we use "1_1"
+// ============ RADAR (Open-Meteo precipitation FORECAST + InterpLayer) ============
+// We pull the next 2 h (15-min steps) or 12 h (hourly steps) of forecast
+// precipitation from Open-Meteo for a 12×8 grid covering the visible map
+// bounds, then render each "frame" as a smooth pixel-level IDW heatmap with
+// the Apple-Weather rain palette. Scrubbing the slider sets a new frame on
+// the same _InterpLayer instance — no extra HTTP calls. This is the only
+// approach that gives us:
+//   • TRUE forecast (the user explicitly asked for 2 h+ into the future)
+//   • Global coverage with no API key
+//   • A smooth coloured heatmap (not gray tiles, not point-circles)
 
-const RADAR_HOST       = 'https://tilecache.rainviewer.com';
-const RADAR_COLOR      = 2;   // universal blue → green → yellow → red
-const RADAR_OPTS       = '1_1';
-const RADAR_OPACITY    = 0.78;
-const RADAR_RELOAD_MS  = 8 * 60 * 1000;   // re-fetch frame index every 8 min
-const RADAR_MAX_PAST   = 6;               // keep at most this many past frames in pool
-const RADAR_MAX_FUTURE = 4;               // and this many forecast frames
-const RADAR_TILE_SIZE  = 512;             // bigger tiles → fewer requests per pan
-
-let _radarLoadToken = 0;
-let _radarMetaTs    = 0;
-
-async function loadRadar() {
-  if (!state.map) return;
-  const token = ++_radarLoadToken;
-  const label = document.getElementById('radarTime');
-
-  // Re-use cached frame metadata for up to 8 min to avoid hammering RainViewer.
-  const fresh = (Date.now() - _radarMetaTs) < RADAR_RELOAD_MS;
-  if (fresh && state.radarFrames && state.radarFrames.length) {
-    _applyRadarLayers();
-    return;
-  }
-
-  if (label) label.textContent = 'lade…';
-  try {
-    const r = await fetchWithTimeout('https://api.rainviewer.com/public/weather-maps.json', {}, 8000);
-    if (!r.ok) throw new Error('RainViewer ' + r.status);
-    const meta = await r.json();
-    if (token !== _radarLoadToken) return;
-
-    let past    = (meta?.radar?.past || []).slice();
-    let nowcast = (meta?.radar?.nowcast || []).slice();
-    if (!past.length && !nowcast.length) throw new Error('no frames');
-
-    // Trim aggressively to a manageable window so we don't hammer the cache.
-    if (past.length > RADAR_MAX_PAST) past = past.slice(past.length - RADAR_MAX_PAST);
-    if (nowcast.length > RADAR_MAX_FUTURE) nowcast = nowcast.slice(0, RADAR_MAX_FUTURE);
-
-    const all = past.concat(nowcast);
-    const nowIdx = Math.max(0, past.length - 1);
-
-    state.radarFrames = all.map((f, i) => ({
-      path:    f.path,
-      time:    f.time,                 // unix seconds
-      isNow:   i === nowIdx,
-      isFuture: i > nowIdx
-    }));
-    state.radarNowIdx = nowIdx;
-    state.radarHost   = meta.host || RADAR_HOST;
-    _radarMetaTs = Date.now();
-    _applyRadarLayers();
-  } catch(e) {
-    console.warn('Radar (RainViewer):', e);
-    if (token === _radarLoadToken && label) label.textContent = 'offline';
-  }
-}
-
-// Lazy tile-layer pool: we only build the layer for the *active* frame
-// up-front. Other frames are created on-demand the first time they are
-// shown (during slider drag, animation, etc.). This keeps the initial
-// tile request count down to one frame's worth — RainViewer's cache
-// rate-limits aggressively and creating ~14 layers at once gets you 429s.
-function _applyRadarLayers() {
-  if (!state.map || !state.radarFrames?.length) return;
-
-  // Tear down old pool entirely — frames may have new IDs.
-  if (state.radarPool && state.radarPool.length) {
-    for (const layer of state.radarPool) {
-      if (layer) { try { state.map.removeLayer(layer); } catch(e) {} }
+// Apple-Weather style rain colour ramp (mm/h)
+const RAIN_STOPS = [
+  { v: 0.10, c: [129, 196, 255] },   // very light → light blue
+  { v: 0.40, c: [ 80, 180, 220] },
+  { v: 0.80, c: [ 46, 190, 140] },   // light → green
+  { v: 1.60, c: [120, 210,  70] },
+  { v: 3.00, c: [245, 205,  60] },   // moderate → yellow
+  { v: 6.00, c: [245, 140,  45] },   // heavy → orange
+  { v: 12.0, c: [232,  66,  58] },   // very heavy → red
+  { v: 25.0, c: [190,  40, 140] },   // extreme → magenta
+  { v: 50.0, c: [130,  30, 180] }    // off-the-chart → purple
+];
+function rainToRGBA(p) {
+  if (p == null || isNaN(p) || p < 0.08) return null;
+  let rgb;
+  if (p >= RAIN_STOPS[RAIN_STOPS.length - 1].v) {
+    rgb = RAIN_STOPS[RAIN_STOPS.length - 1].c;
+  } else {
+    for (let i = 0; i < RAIN_STOPS.length - 1; i++) {
+      const a = RAIN_STOPS[i], b = RAIN_STOPS[i + 1];
+      if (p >= a.v && p < b.v) {
+        // Log-space interpolation produces a perceptually even ramp
+        const f = (Math.log(p) - Math.log(a.v)) / (Math.log(b.v) - Math.log(a.v));
+        rgb = _lerpColor(a.c, b.c, f);
+        break;
+      }
     }
   }
-  state.radarPool = state.radarFrames.map(() => null);
-
-  // Default to "now" frame
-  state.radarIdx = state.radarNowIdx || 0;
-  const slider = document.getElementById('radarSlider');
-  if (slider) {
-    slider.max = Math.max(0, state.radarFrames.length - 1);
-    slider.value = state.radarIdx;
-  }
-
-  if (state.showRadar) {
-    _ensureRadarLayer(state.radarIdx);
-    showRadarFrame(state.radarIdx);
-  }
-  updateRadarRangeLabel();
-
-  const empty = document.getElementById('mapEmpty');
-  if (empty) empty.hidden = true;
-
-  // Don't auto-play. Auto-play forces every frame's layer to load on a
-  // timer and immediately bursts the cache. The user can press play.
+  if (!rgb) rgb = RAIN_STOPS[0].c;
+  // Alpha ramps up with intensity so very-light rain stays subtle
+  const a = Math.min(245, Math.round(155 + Math.min(p, 8) * 12));
+  return [rgb[0], rgb[1], rgb[2], a];
 }
 
-// Build (or return) the L.tileLayer for a single radar frame.
-function _ensureRadarLayer(idx) {
-  if (!state.map || !state.radarFrames?.[idx]) return null;
-  if (state.radarPool[idx]) return state.radarPool[idx];
-  const frame = state.radarFrames[idx];
-  const url = `${state.radarHost}${frame.path}/${RADAR_TILE_SIZE}/{z}/{x}/{y}/${RADAR_COLOR}/${RADAR_OPTS}.png`;
-  const layer = L.tileLayer(url, {
-    tileSize: RADAR_TILE_SIZE,
-    opacity: 0,
-    pane: 'radarPane',
-    attribution: '© RainViewer',
-    crossOrigin: true,
-    zIndex: 10,
-    updateWhenIdle: true,
-    updateWhenZooming: false,
-    keepBuffer: 1
+let _forecastInFlight = false;
+let _forecastCooldown = 0;
+
+async function loadRadar() {
+  return _fetchAndRenderForecastRadar();
+}
+
+async function _fetchAndRenderForecastRadar() {
+  if (!state.showRadar || !state.map) return;
+  if (_forecastInFlight) return;
+  if (Date.now() < _forecastCooldown) return;
+  _forecastInFlight = true;
+  const label = document.getElementById('radarTime');
+  // Only flip the label to "Lade…" if there is no existing data on screen.
+  // Otherwise we keep the previous time pill so the user sees no flicker.
+  const hadData = !!(state.radarFrames && state.radarFrames.length);
+  if (label && !hadData) label.textContent = 'Lade Vorhersage…';
+  try {
+    // 12×7 = 84 sample points — single bulk call (well under Open-Meteo's
+    // 100-pair limit, and importantly under its WEIGHTED quota since each
+    // location counts as 1 of the 600/min, 5000/h, 10000/day budget).
+    // The trick to making 84 cells feel dense everywhere is the huge
+    // DATA_PAD_FRAC in _sampleGrid: a single fetch covers an area many
+    // times the viewport, so most subsequent pans hit the cache instead
+    // of firing a new request.
+    const grid = _sampleGrid(12, 7);
+    const { lats, lngs, cols, rows, latStart, latEnd, lngStart, lngEnd } = grid;
+    const useMinutely = state.radarRangeHours === 2;
+    const baseQs = useMinutely
+      // 9 frames × 15 min = next 2 h (frame 0 = "Jetzt")
+      ? '&minutely_15=precipitation&forecast_minutely_15=9&timezone=auto'
+      // 13 frames × 1 h = next 12 h (frame 0 = "Jetzt")
+      : '&hourly=precipitation&forecast_hours=13&timezone=auto';
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lngs.join(',')}${baseQs}`;
+    const raw = await fetchOpenMeteo(url, { tries: 2, baseTimeout: 12000 });
+    if (!state.showRadar) return;
+    const arr = Array.isArray(raw) ? raw : [raw];
+    if (!arr.length) throw new Error('no data');
+
+    const block0 = useMinutely ? arr[0]?.minutely_15 : arr[0]?.hourly;
+    const times = block0?.time || [];
+    const frameCount = times.length;
+    if (!frameCount) throw new Error('no frames');
+
+    // Build a row-major Float32Array of values per frame (cols × rows = arr.length)
+    const N = cols * rows;
+    const framesData = [];
+    for (let h = 0; h < frameCount; h++) {
+      const values = new Float32Array(N);
+      for (let i = 0; i < arr.length && i < N; i++) {
+        const block_i = useMinutely ? arr[i]?.minutely_15 : arr[i]?.hourly;
+        const v = block_i?.precipitation?.[h];
+        values[i] = (v == null || isNaN(v)) ? 0 : v;
+      }
+      framesData.push({
+        time: new Date(times[h]).getTime() / 1000,
+        values,
+        isNow: h === 0,
+        isFuture: h > 0
+      });
+    }
+
+    state.radarFrames     = framesData;
+    state.radarNowIdx     = 0;
+    state.radarFrameFloat = Math.min(state.radarFrameFloat || 0, framesData.length - 1);
+    state.radarIdx        = Math.round(state.radarFrameFloat);
+    state._radarGridInfo  = { cols, rows, latStart, latEnd, lngStart, lngEnd };
+
+    _defineInterpLayer();
+    if (!state.forecastInterpLayer) {
+      state.forecastInterpLayer = new _InterpLayer({
+        pane: 'radarPane',
+        step: 3,            // 1/3-resolution offscreen → bilinear stretch
+        blur: 14,           // hides the source-grid undersampling smoothly
+        padFrac: 0.6,       // canvas extends 60 % beyond viewport on each side
+        opacity: 0.88,
+        colorFn: rainToRGBA
+      });
+    }
+    if (!state.map.hasLayer(state.forecastInterpLayer)) {
+      state.forecastInterpLayer.addTo(state.map);
+    }
+
+    // Remember the sampled bounds + timestamp so subsequent pans inside
+    // this box don't refire the API. The cached `latStart`/`latEnd` are
+    // the (north, south) of the data area after pad/clamp.
+    state._radarCache = {
+      ts:    Date.now(),
+      north: latStart,
+      south: latEnd,
+      east:  lngEnd,
+      west:  lngStart
+    };
+
+    showRadarFrame(state.radarFrameFloat);
+
+    const slider = document.getElementById('radarSlider');
+    if (slider) {
+      slider.max  = (framesData.length - 1).toString();
+      slider.step = '0.05';
+      slider.value = state.radarFrameFloat;
+    }
+    renderRadarTicks();
+    const empty = document.getElementById('mapEmpty');
+    if (empty) empty.hidden = true;
+  } catch(e) {
+    console.warn('forecast radar:', e);
+    // Open-Meteo's free tier rate-limits cumulatively (per minute, hour
+    // and day). Once we trip it the cleanest thing we can do is back off
+    // for a long stretch — 90 s is enough to drain the per-minute window.
+    const is429 = String(e && e.message || '').includes('429');
+    _forecastCooldown = Date.now() + (is429 ? 90 : 30) * 1000;
+    // Keep showing whatever data we already have rather than blanking
+    // the screen with "offline".
+    if (label && !hadData) {
+      label.textContent = is429 ? 'API überlastet · neu in 90 s' : 'offline';
+    }
+  } finally {
+    _forecastInFlight = false;
+  }
+}
+
+// 2 Std (15-min steps) ↔ 12 Std (1-h steps) — both are FUTURE forecast
+function setRadarRange(hours) {
+  const h = hours === 2 ? 2 : 12;
+  if (state.radarRangeHours === h) return;
+  state.radarRangeHours = h;
+  document.querySelectorAll('#radarRangeSeg button').forEach(b => {
+    b.classList.toggle('active', +b.dataset.range === h);
   });
-  if (state.showRadar) layer.addTo(state.map);
-  state.radarPool[idx] = layer;
-  return layer;
+  if (state.showRadar) {
+    state.radarFrameFloat = 0;
+    state.radarIdx = 0;
+    _forecastCooldown = 0;
+    loadRadar();
+  }
 }
 
-function updateRadarRangeLabel() {
-  const el = document.getElementById('radarRange');
-  if (!el || !state.radarFrames?.length) return;
-  const past = state.radarNowIdx;
-  const future = state.radarFrames.length - 1 - past;
-  el.textContent = `${past * 10} min ⇄ +${future * 10} min`;
+// Lerp two row-major Float32Arrays element-wise into a fresh array.
+function _lerpRadarValues(v0, v1, t) {
+  const N = v0.length;
+  const out = new Float32Array(N);
+  const it = 1 - t;
+  for (let i = 0; i < N; i++) out[i] = v0[i] * it + v1[i] * t;
+  return out;
 }
 
-function showRadarFrame(idx) {
-  if (!state.map || !state.radarPool || !state.radarPool.length) return;
+// Show a frame at a (possibly fractional) position. We temporally lerp the
+// per-cell precipitation values between adjacent frames so the rain visibly
+// drifts/grows/shrinks across time instead of jumping at the hour mark.
+function showRadarFrame(t) {
+  if (!state.radarFrames || !state.radarFrames.length) return;
   if (!state.showRadar) return;
-  idx = Math.max(0, Math.min(state.radarPool.length - 1, idx));
+  const N = state.radarFrames.length;
+  if (typeof t !== 'number' || isNaN(t)) t = 0;
+  if (t < 0) t = 0;
+  if (t > N - 1) t = N - 1;
+  state.radarFrameFloat = t;
+  state.radarIdx = Math.round(t);
 
-  // Lazy-create the target frame's layer if it doesn't exist yet.
-  _ensureRadarLayer(idx);
-
-  for (let i = 0; i < state.radarPool.length; i++) {
-    const layer = state.radarPool[i];
-    if (!layer) continue;
-    if (!state.map.hasLayer(layer)) layer.addTo(state.map);
-    layer.setOpacity(i === idx ? RADAR_OPACITY : 0);
+  const i0 = Math.floor(t);
+  const i1 = Math.min(N - 1, i0 + 1);
+  const frac = t - i0;
+  const f0 = state.radarFrames[i0];
+  const f1 = state.radarFrames[i1];
+  let values;
+  if (i0 === i1 || frac < 0.001) {
+    values = f0.values;
+  } else if (frac > 0.999) {
+    values = f1.values;
+  } else {
+    values = _lerpRadarValues(f0.values, f1.values, frac);
   }
-  state.radarIdx = idx;
 
-  const frame = state.radarFrames[idx];
+  if (state.forecastInterpLayer && state._radarGridInfo) {
+    state.forecastInterpLayer.setData({
+      cols: state._radarGridInfo.cols,
+      rows: state._radarGridInfo.rows,
+      latStart: state._radarGridInfo.latStart,
+      latEnd:   state._radarGridInfo.latEnd,
+      lngStart: state._radarGridInfo.lngStart,
+      lngEnd:   state._radarGridInfo.lngEnd,
+      values
+    });
+  }
+
+  // Display an interpolated time label so the bottom pill is in sync
+  const interpTime = f0.time + (f1.time - f0.time) * frac;
+  _updateRadarBottomBar({
+    time: interpTime,
+    isNow: t < 0.5,
+    isFuture: t >= 0.5
+  });
+  _updateRadarTicksHighlight(t);
+
   const slider = document.getElementById('radarSlider');
-  const label  = document.getElementById('radarTime');
-  if (slider) slider.value = idx;
-  if (label && frame) {
-    const d = new Date(frame.time * 1000);
-    const hhmm = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
-    let prefix;
-    if (frame.isNow) prefix = 'Jetzt';
-    else if (frame.isFuture) prefix = 'Vorhersage';
-    else prefix = 'Vergangen';
-    label.textContent = `${prefix} · ${hhmm}`;
-    label.classList.toggle('nowcast', !!frame.isFuture);
+  if (slider && document.activeElement !== slider) slider.value = t;
+}
+
+// Update the bottom pill's dynamic title/date line based on the frame.
+function _updateRadarBottomBar(frame) {
+  const title = document.getElementById('radarTime');
+  const sub   = document.getElementById('radarDate');
+  if (!title || !sub || !frame) return;
+  const d = new Date(frame.time * 1000);
+  const hhmm = pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  const weekdays = ['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+  const months = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  const datePart = `${weekdays[d.getDay()]}, ${d.getDate()}. ${months[d.getMonth()]} ${d.getFullYear()}`;
+  let label;
+  if (frame.isNow) label = `Jetzt · ${hhmm}`;
+  else if (frame.isFuture) label = `Vorhersage · ${hhmm}`;
+  else label = `Verlauf · ${hhmm}`;
+  title.textContent = label;
+  sub.textContent = datePart;
+}
+
+// Highlight the tick closest to the current frame (visual feedback).
+// Accepts a (possibly fractional) frame position.
+function _updateRadarTicksHighlight(t) {
+  const wrap = document.getElementById('radarTicks');
+  if (!wrap || !state.radarFrames?.length) return;
+  const frameCount = state.radarFrames.length;
+  const ticks = wrap.querySelectorAll('span');
+  if (!ticks.length) return;
+  const ratio = frameCount > 1 ? (t / (frameCount - 1)) : 0;
+  const activeTick = Math.round(ratio * (ticks.length - 1));
+  ticks.forEach((tk, i) => tk.classList.toggle('is-now', i === activeTick));
+}
+
+// Rebuild the tick labels under the slider based on the current frame list.
+function renderRadarTicks() {
+  const wrap = document.getElementById('radarTicks');
+  if (!wrap || !state.radarFrames?.length) return;
+  const frames = state.radarFrames;
+  // Pick ~5 evenly-spaced ticks
+  const n = Math.min(5, frames.length);
+  const idxs = [];
+  for (let i = 0; i < n; i++) {
+    idxs.push(Math.round(i * (frames.length - 1) / (n - 1)));
   }
+  const nowIdx = state.radarNowIdx ?? 0;
+  wrap.innerHTML = idxs.map((i) => {
+    const f = frames[i];
+    const d = new Date(f.time * 1000);
+    const label = i === nowIdx ? 'Jetzt' : (pad2(d.getHours()) + ':' + pad2(d.getMinutes()));
+    return `<span>${label}</span>`;
+  }).join('');
 }
 
 function toggleRadar(on) {
@@ -3535,15 +4559,24 @@ function toggleRadar(on) {
   if (!on) {
     const empty = document.getElementById('mapEmpty');
     if (empty) empty.hidden = true;
+    if (state.forecastInterpLayer && state.map) {
+      try { state.map.removeLayer(state.forecastInterpLayer); } catch(e) {}
+    }
+    // Old artefacts from previous iterations — defensive cleanup
+    if (state.forecastLayer && state.map) {
+      try { state.map.removeLayer(state.forecastLayer); } catch(e) {}
+    }
     if (state.radarPool) {
       for (const layer of state.radarPool) {
-        if (layer) { try { state.map.removeLayer(layer); } catch(e) {} }
+        if (layer && state.map) { try { state.map.removeLayer(layer); } catch(e) {} }
       }
     }
     stopRadarAnimation();
   } else {
-    if (state.radarPool && state.radarPool.length) {
-      _ensureRadarLayer(state.radarIdx);
+    if (state.radarFrames?.length && state.forecastInterpLayer) {
+      if (!state.map.hasLayer(state.forecastInterpLayer)) {
+        state.forecastInterpLayer.addTo(state.map);
+      }
       showRadarFrame(state.radarIdx);
     } else {
       loadRadar();
@@ -3551,143 +4584,301 @@ function toggleRadar(on) {
   }
 }
 
-// Build the most-recent GOES-East GeoColor timestamp (rounded down to nearest 10 min,
-// then offset by 20 min to give the tile cache time to populate). GIBS hosts real
-// near-real-time imagery from the GOES-East ABI sensor at ~10-min cadence.
-function gibsLatestTime() {
-  const now = new Date(Date.now() - 20 * 60 * 1000);
-  now.setUTCMinutes(Math.floor(now.getUTCMinutes() / 10) * 10, 0, 0);
-  return now.toISOString().replace(/\.\d{3}Z$/, 'Z');
+// ============ CLOUDS OVERLAY (Open-Meteo cloud_cover via InterpLayer) ============
+// We sample a 9×6 grid of Open-Meteo cloud_cover values (0–100 %) over the
+// visible bounds and feed them to an _InterpLayer that paints a smooth
+// pixel-level white→transparent heatmap. This gives the silky Apple-Weather
+// "white cloud" look and works at every zoom level — no satellite tile
+// dependency, no 404s, no host-specific path quirks.
+let _cloudsInFlight = false;
+let _cloudsCooldown = 0;
+let cloudsFetchTimer = null;
+function cloudsToRGBA(p) {
+  if (p == null || isNaN(p)) return null;
+  // Map 0–100 % cloud cover → soft white alpha. Sharper edges at the high
+  // end give visible cloud bodies; everything below 12 % is invisible so
+  // clear sky stays clear.
+  const v = Math.max(0, Math.min(100, p));
+  let a;
+  if (v < 12) a = 0;
+  else if (v < 30) a = (v - 12) / 18 * 0.30;          // 0 → 0.30
+  else if (v < 65) a = 0.30 + (v - 30) / 35 * 0.40;   // 0.30 → 0.70
+  else              a = 0.70 + (v - 65) / 35 * 0.22;   // 0.70 → 0.92
+  return [255, 255, 255, Math.round(a * 255)];
 }
-
-function toggleClouds(on) {
+async function toggleClouds(on) {
   state.showClouds = on;
-  if (state.cloudsLayer) {
-    try { state.map.removeLayer(state.cloudsLayer); } catch(e) {}
-    state.cloudsLayer = null;
+  clearTimeout(cloudsFetchTimer);
+  if (!on) {
+    if (state.cloudsInterpLayer && state.map) {
+      try { state.map.removeLayer(state.cloudsInterpLayer); } catch(e) {}
+    }
+    return;
   }
-  if (!on) return;
+  cloudsFetchTimer = setTimeout(_fetchAndRenderClouds, 300);
+}
+async function _fetchAndRenderClouds() {
+  if (!state.showClouds || !state.map) return;
+  if (_cloudsInFlight) return;
+  if (Date.now() < _cloudsCooldown) return;
+  // 12×7 = 84 sample points — single bulk call to stay friendly with
+  // Open-Meteo's weighted quota (each location counts as 1 of 600/min).
+  // The huge DATA_PAD_FRAC in _sampleGrid means a single fetch covers a
+  // 9× viewport area, so most pans hit the cache without refetching.
+  const grid = _sampleGrid(12, 7);
+  const { lats, lngs, cols, rows, latStart, latEnd, lngStart, lngEnd } = grid;
+  _cloudsInFlight = true;
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lngs.join(',')}&current=cloud_cover&timezone=auto`;
+    const raw = await fetchOpenMeteo(url, { tries: 2, baseTimeout: 10000 });
+    if (!state.showClouds) return;
+    const arr = Array.isArray(raw) ? raw : [raw];
+    const N = cols * rows;
+    const values = new Float32Array(N);
+    for (let i = 0; i < arr.length && i < N; i++) {
+      const p = arr[i]?.current?.cloud_cover;
+      values[i] = (p == null || isNaN(p)) ? 0 : p;
+    }
+    _defineInterpLayer();
+    if (!state.cloudsInterpLayer) {
+      state.cloudsInterpLayer = new _InterpLayer({
+        pane: 'cloudsPane',
+        step: 3,             // 1/3-res offscreen for soft, fast bilinear
+        blur: 24,            // soft cloud-like edges
+        padFrac: 0.6,        // canvas extends 60 % beyond viewport
+        opacity: 1,          // alpha is baked into colorFn
+        colorFn: cloudsToRGBA
+      });
+    }
+    if (!state.map.hasLayer(state.cloudsInterpLayer)) state.cloudsInterpLayer.addTo(state.map);
+    state.cloudsInterpLayer.setData({
+      cols, rows, latStart, latEnd, lngStart, lngEnd, values
+    });
 
-  // NASA GIBS GOES-East GeoColor — no API key, CORS-enabled, ~10-min cadence.
-  // We use the most-recent timestamp (rounded down to 10 min, offset back so
-  // the tile cache has populated). The layer renders true near-real-time
-  // satellite cloud imagery.
-  const time = gibsLatestTime();
-  const url = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/GOES-East_ABI_GeoColor/default/${time}/GoogleMapsCompatible_Level7/{z}/{y}/{x}.jpg`;
-  state.cloudsLayer = L.tileLayer(url, {
-    opacity: 0.7,
-    attribution: 'Imagery © NASA GIBS / NOAA GOES-East',
-    tileSize: 256,
-    maxNativeZoom: 7,
-    maxZoom: 18,
-    pane: 'cloudsPane',
-    bounds: L.latLngBounds([-85.0511, -180], [85.0511, 180]),
-    className: 'clouds-tiles'
-  });
-  state.cloudsLayer.addTo(state.map);
+    // Remember the sampled bounds + timestamp so subsequent pans inside
+    // this box don't refire the API.
+    state._cloudsCache = {
+      ts:    Date.now(),
+      north: latStart,
+      south: latEnd,
+      east:  lngEnd,
+      west:  lngStart
+    };
+  } catch(e) {
+    console.warn('clouds overlay:', e);
+    const is429 = String(e && e.message || '').includes('429');
+    _cloudsCooldown = Date.now() + (is429 ? 90 : 30) * 1000;
+  } finally {
+    _cloudsInFlight = false;
+  }
 }
 
-// ============ TEMPERATURE OVERLAY ============
-// Build a coarse grid based on the visible map bounds, fetch current temps
-// from Open-Meteo (one API call, up to ~36 points), and render coloured
-// circle markers on the radar pane. Refreshes when the map moves.
+// ============ TEMPERATURE / WIND / AQI — IDW OVERLAYS ============
+// One InterpLayer per overlay kind, each fed with a 9×6 grid of Open-Meteo
+// samples and rendered as a smooth pixel-level IDW heatmap (see
+// _InterpLayer). The grid is picked from the visible bounds but clamped to
+// a local box when zoomed out past the whole globe so longitudes never fall
+// outside [-180, 180].
 const TEMP_STOPS = [
-  { t: -25, c: '#1d2966' },
-  { t: -15, c: '#2c4ea0' },
-  { t: -5,  c: '#3a82c8' },
-  { t: 0,   c: '#5fb0d8' },
-  { t: 5,   c: '#90d0d8' },
-  { t: 10,  c: '#b8e0c0' },
-  { t: 15,  c: '#e6e283' },
-  { t: 20,  c: '#f3b860' },
-  { t: 25,  c: '#ec7340' },
-  { t: 30,  c: '#d23a30' },
-  { t: 35,  c: '#8c1828' },
-  { t: 42,  c: '#4a0c1e' }
+  { t: -25, c: [ 29,  41, 102] },
+  { t: -15, c: [ 44,  78, 160] },
+  { t: -5,  c: [ 58, 130, 200] },
+  { t: 0,   c: [ 95, 176, 216] },
+  { t: 5,   c: [144, 208, 216] },
+  { t: 10,  c: [184, 224, 192] },
+  { t: 15,  c: [230, 226, 131] },
+  { t: 20,  c: [243, 184,  96] },
+  { t: 25,  c: [236, 115,  64] },
+  { t: 30,  c: [210,  58,  48] },
+  { t: 35,  c: [140,  24,  40] },
+  { t: 42,  c: [ 74,  12,  30] }
 ];
-function tempToColor(t) {
-  if (t == null || isNaN(t)) return '#888';
-  if (t <= TEMP_STOPS[0].t) return TEMP_STOPS[0].c;
-  if (t >= TEMP_STOPS[TEMP_STOPS.length-1].t) return TEMP_STOPS[TEMP_STOPS.length-1].c;
-  for (let i = 0; i < TEMP_STOPS.length - 1; i++) {
-    const a = TEMP_STOPS[i], b = TEMP_STOPS[i+1];
-    if (t >= a.t && t < b.t) {
-      const f = (t - a.t) / (b.t - a.t);
-      const ar = parseInt(a.c.slice(1,3),16), ag = parseInt(a.c.slice(3,5),16), ab = parseInt(a.c.slice(5,7),16);
-      const br = parseInt(b.c.slice(1,3),16), bg = parseInt(b.c.slice(3,5),16), bb = parseInt(b.c.slice(5,7),16);
-      const r = Math.round(ar + (br-ar)*f);
-      const g = Math.round(ag + (bg-ag)*f);
-      const bl = Math.round(ab + (bb-ab)*f);
-      return '#' + [r,g,bl].map(v => v.toString(16).padStart(2,'0')).join('');
+function _lerpColor(a, b, f) {
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * f),
+    Math.round(a[1] + (b[1] - a[1]) * f),
+    Math.round(a[2] + (b[2] - a[2]) * f)
+  ];
+}
+// Returns an [r,g,b,a] array for the InterpLayer (and null when out of range).
+function tempToRGBA(t) {
+  if (t == null || isNaN(t)) return null;
+  let rgb;
+  if (t <= TEMP_STOPS[0].t) rgb = TEMP_STOPS[0].c;
+  else if (t >= TEMP_STOPS[TEMP_STOPS.length-1].t) rgb = TEMP_STOPS[TEMP_STOPS.length-1].c;
+  else {
+    for (let i = 0; i < TEMP_STOPS.length - 1; i++) {
+      const a = TEMP_STOPS[i], b = TEMP_STOPS[i+1];
+      if (t >= a.t && t < b.t) {
+        const f = (t - a.t) / (b.t - a.t);
+        rgb = _lerpColor(a.c, b.c, f);
+        break;
+      }
     }
   }
-  return '#888';
+  if (!rgb) return null;
+  return [rgb[0], rgb[1], rgb[2], 200];
+}
+// Legacy helpers kept for any caller that still needs a hex/rgba string.
+function tempToColorAlpha(t) {
+  const rgba = tempToRGBA(t);
+  if (!rgba) return null;
+  return `rgba(${rgba[0]},${rgba[1]},${rgba[2]},${(rgba[3]/255).toFixed(2)})`;
+}
+function tempToColor(t) {
+  const rgba = tempToRGBA(t);
+  if (!rgba) return '#888';
+  return '#' + [rgba[0],rgba[1],rgba[2]].map(v => v.toString(16).padStart(2,'0')).join('');
+}
+
+// ---- longitude / latitude normalisation (shared across all overlays) ----
+function _wrapLng(l) {
+  l = ((l + 180) % 360 + 360) % 360 - 180;
+  return l;
+}
+function _clampLat(l) {
+  return Math.max(-85, Math.min(85, l));
+}
+// Build a STRUCTURED sample grid for the visible bounds. Returned as a
+// row-major (north → south, west → east) list of lat/lng pairs PLUS the
+// grid bounds, so a downstream renderer (e.g. _InterpLayer) can do bilinear
+// interpolation on it.
+//
+// Zoomed out past 60° we clamp to a small box around the active location so
+// the query stays valid (Open-Meteo rejects coords outside [-90,90]/[-180,180]).
+// Canvas pad (must match _InterpLayer's default padFrac).
+const INTERP_PAD_FRAC = 0.6;
+// DATA pad — sampled area extends FAR beyond the canvas so a single fetch
+// covers many subsequent pans. The smart-refetch logic below only fires a
+// new HTTP call when the viewport actually steps outside this larger box.
+// 1.0 means the data area is 3 × viewport in each dim → 9 × area total.
+const DATA_PAD_FRAC = 1.0;
+
+function _sampleGrid(cols, rows) {
+  const b = state.map.getBounds();
+  let south = b.getSouth(), north = b.getNorth();
+  let west  = b.getWest(),  east  = b.getEast();
+
+  // Sample over a much larger box than the visible viewport so the cache
+  // remains valid through many subsequent pans (no refetch needed).
+  const padLat = (north - south) * DATA_PAD_FRAC;
+  const padLng = (east - west)   * DATA_PAD_FRAC;
+  south -= padLat; north += padLat;
+  west  -= padLng; east  += padLng;
+
+  // Clamp latitudes to Web Mercator's valid range.
+  if (south < -85) south = -85;
+  if (north >  85) north =  85;
+
+  // Clamp the longitude span to one full world copy max — sampling more
+  // than 360° just duplicates points and wastes API quota.
+  if ((east - west) > 360) {
+    const cLng = (east + west) / 2;
+    west = cLng - 180;
+    east = cLng + 180;
+  }
+
+  const lats = [], lngs = [];
+  // Row 0 = north (latStart); row rows-1 = south (latEnd)
+  for (let r = 0; r < rows; r++) {
+    const lat = _clampLat(north + (south - north) * r / (rows - 1));
+    for (let c = 0; c < cols; c++) {
+      // Build the raw lng inside [west, east] for the renderer's bounds,
+      // and a wrapped variant in [-180, 180] for Open-Meteo (which expects
+      // standard longitudes).
+      const rawLng = west + (east - west) * c / (cols - 1);
+      lats.push(+lat.toFixed(3));
+      lngs.push(+_wrapLng(rawLng).toFixed(3));
+    }
+  }
+  return {
+    lats, lngs, cols, rows,
+    latStart: north, latEnd: south,
+    lngStart: west,  lngEnd: east
+  };
+}
+
+// How long a successful fetch's data stays "fresh" before we refetch
+// (in milliseconds). Radar updates more often than clouds.
+const RADAR_CACHE_MS  = 5  * 60 * 1000;
+const CLOUDS_CACHE_MS = 15 * 60 * 1000;
+
+// Decide whether the cached overlay data still covers the current viewport.
+// Returns true ONLY when:
+//   • the cache is missing, OR
+//   • the cache is older than its kind's TTL, OR
+//   • the current viewport extends OUTSIDE the cached sample bounds.
+// This single function is the key to staying under Open-Meteo's quota: it
+// lets the user pan freely inside the cached area without firing any new
+// HTTP calls — the InterpLayer's _reset already re-renders from cached
+// values whenever the map fires moveend.
+function _needsRefetch(kind) {
+  const cache = state['_' + kind + 'Cache'];
+  if (!cache) return true;
+  const ttl = kind === 'clouds' ? CLOUDS_CACHE_MS : RADAR_CACHE_MS;
+  if (Date.now() - cache.ts > ttl) return true;
+  if (!state.map) return true;
+  const b = state.map.getBounds();
+  // Tiny safety margin (in degrees) so floating-point edge equality
+  // doesn't trigger spurious refetches.
+  const eps = 0.001;
+  return b.getNorth() > cache.north - eps ||
+         b.getSouth() < cache.south + eps ||
+         b.getEast()  > cache.east  - eps ||
+         b.getWest()  < cache.west  + eps;
 }
 
 let tempFetchTimer = null;
+let _tempInFlight = false;
+let _tempCooldown = 0;
 async function showTemperatureOverlay() {
   if (!state.map) return;
   state.showTemp = true;
-  // Debounce so panning doesn't spam the API
   clearTimeout(tempFetchTimer);
-  tempFetchTimer = setTimeout(_fetchAndRenderTemp, 220);
+  tempFetchTimer = setTimeout(_fetchAndRenderTemp, 300);
 }
 async function _fetchAndRenderTemp() {
   if (!state.showTemp || !state.map) return;
-  const b = state.map.getBounds();
-  // Adapt grid density to viewport zoom — denser when zoomed in
-  const z = state.map.getZoom();
-  const cols = z >= 10 ? 7 : z >= 8 ? 6 : 5;
-  const rows = z >= 10 ? 5 : z >= 8 ? 5 : 4;
-  const lats = [], lngs = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const lat = b.getSouth() + (b.getNorth() - b.getSouth()) * (r + 0.5) / rows;
-      const lng = b.getWest() + (b.getEast() - b.getWest()) * (c + 0.5) / cols;
-      lats.push(lat.toFixed(3));
-      lngs.push(lng.toFixed(3));
-    }
-  }
+  if (_tempInFlight) return;
+  if (Date.now() < _tempCooldown) return;
+  // 9×6 = 54 points — dense enough for good IDW interpolation, modest
+  // enough to stay well under Open-Meteo's 600 calls/min limit.
+  const { lats, lngs } = _sampleGrid(9, 6);
+  _tempInFlight = true;
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lngs.join(',')}&current=temperature_2m&timezone=auto`;
-    const raw = await fetchOpenMeteo(url, { tries: 2, baseTimeout: 9000 });
+    const raw = await fetchOpenMeteo(url, { tries: 2, baseTimeout: 10000 });
+    if (!state.showTemp) return;
     const arr = Array.isArray(raw) ? raw : [raw];
-    if (state.tempLayer) {
-      try { state.map.removeLayer(state.tempLayer); } catch(e) {}
-    }
-    state.tempLayer = L.layerGroup();
+    const points = [];
     arr.forEach((entry, i) => {
       const t = entry?.current?.temperature_2m;
-      if (t == null) return;
-      const lat = +lats[i], lng = +lngs[i];
-      const color = tempToColor(t);
-      const marker = L.circleMarker([lat, lng], {
-        radius: 24,
-        color: color,
-        fillColor: color,
-        fillOpacity: 0.62,
-        weight: 0,
-        pane: 'radarPane',
-        interactive: false
-      });
-      marker.bindTooltip(`${Math.round(t)}°`, {
-        permanent: true,
-        direction: 'center',
-        className: 'temp-label',
-        offset: [0, 0]
-      });
-      state.tempLayer.addLayer(marker);
+      if (t == null || isNaN(t)) return;
+      points.push({ lat: lats[i], lng: lngs[i], v: t });
     });
-    state.tempLayer.addTo(state.map);
+    _defineInterpLayer();
+    if (!state.tempLayer) {
+      state.tempLayer = new _InterpLayer({
+        pane: 'radarPane',
+        step: 6,
+        power: 2,
+        opacity: 0.80,
+        colorFn: tempToRGBA
+      });
+    }
+    if (!state.map.hasLayer(state.tempLayer)) state.tempLayer.addTo(state.map);
+    state.tempLayer.setData(points);
   } catch(e) {
     console.warn('temp overlay:', e);
+    _tempCooldown = Date.now() + 60 * 1000;
+  } finally {
+    _tempInFlight = false;
   }
 }
 function hideTemperatureOverlay() {
   state.showTemp = false;
-  if (state.tempLayer) {
+  if (state.tempLayer && state.map) {
     try { state.map.removeLayer(state.tempLayer); } catch(e) {}
-    state.tempLayer = null;
   }
 }
 
@@ -3714,40 +4905,186 @@ function setMapLegend(kind) {
   }
 }
 
-// ============ MAP FULLSCREEN ============
-function toggleMapFullscreen() {
-  const card = document.querySelector('.map-card');
-  if (!card) return;
-  card.classList.toggle('fullscreen');
-  const isFs = card.classList.contains('fullscreen');
-  // Stop body scroll behind
-  document.body.style.overflow = isFs ? 'hidden' : '';
-  document.body.classList.toggle('map-fullscreen', isFs);
-  // Force Leaflet to recompute size
-  setTimeout(() => { try { state.map.invalidateSize(); } catch(e){} }, 220);
+// ============ RADAR OVERLAY (fullscreen, Apple-Weather style) ============
+let _radarOverlayOpen = false;
+function openRadarOverlay() {
+  if (_radarOverlayOpen) return;
+  const ov = document.getElementById('radarOverlay');
+  if (!ov) return;
+  _radarOverlayOpen = true;
+  ov.classList.add('show');
+  ov.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('radar-open');
+  document.body.style.overflow = 'hidden';
+
+  // Two rAF ticks guarantee the browser has laid out the overlay (went
+  // from display:none → display:block) before Leaflet measures the
+  // container. Without this, the map is initialised at 0×0 and the tile
+  // layer ends up with no visible tiles even after invalidateSize.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (!state.map) {
+      initMap();   // initMap also calls loadRadar internally
+    } else {
+      try { state.map.invalidateSize(); } catch(e) {}
+    }
+    // Center on active location whenever we open the overlay
+    if (state.locations[state.idx] && state.map) {
+      const loc = state.locations[state.idx];
+      try { state.map.setView([loc.latitude, loc.longitude], Math.max(state.map.getZoom() || 8, 7), { animate: false }); } catch(e) {}
+    }
+    // Apply the selected layer (radar by default). For the radar layer this
+    // calls toggleRadar(true) which will either re-use the cached frames or
+    // call loadRadar() — that's also enough to handle first-time open after
+    // initMap() already fired a loadRadar.
+    _setRadarLayer(state.radarOverlayLayer || 'radar');
+  }));
+}
+function closeRadarOverlay() {
+  if (!_radarOverlayOpen) return;
+  _radarOverlayOpen = false;
+  const ov = document.getElementById('radarOverlay');
+  if (ov) {
+    ov.classList.remove('show');
+    ov.setAttribute('aria-hidden', 'true');
+  }
+  document.body.classList.remove('radar-open');
+  document.body.style.overflow = '';
+  stopRadarAnimation();
+  // Also hide the layer menu and locations picker if either was open
+  const menu = document.getElementById('radarLayerMenu');
+  if (menu) menu.hidden = true;
+  const picker = document.getElementById('radarLocPicker');
+  if (picker) picker.hidden = true;
 }
 
-// rAF-based playback — smoother than setInterval, frame timing is consistent
-const RADAR_FRAME_MS = 520;     // step normal frames
-const RADAR_PAUSE_MS = 900;     // hold longer on the "now" frame
+// ============ RADAR LAYER PICKER ============
+// Two overlays: precipitation forecast and cloud cover. The temperature
+// layer was removed because a 100-point Open-Meteo grid simply cannot
+// produce an accurate global temperature heatmap.
+function _setRadarLayer(kind) {
+  // Defensive: if anything still asks for the removed 'temp' layer,
+  // silently fall back to radar.
+  if (kind !== 'radar' && kind !== 'clouds') kind = 'radar';
+  state.radarOverlayLayer = kind;
+  // Reset any active cooldown — an explicit user interaction should always
+  // trigger a fresh attempt, even if the previous layer hit a 429/400.
+  _forecastCooldown = 0;
+  _tempCooldown = 0;
+  _cloudsCooldown = 0;
+  // Turn everything off first
+  toggleRadar(false);
+  hideTemperatureOverlay();
+  toggleClouds(false);
+  const legend = document.getElementById('radarLegend');
+  const legendTitle = document.getElementById('radarLegendTitle');
+  const legendLabels = document.getElementById('radarLegendLabels');
+  if (legend) legend.setAttribute('data-kind', kind);
+  if (kind === 'radar') {
+    if (legendTitle) legendTitle.textContent = 'Niederschlag';
+    if (legendLabels) legendLabels.innerHTML =
+      '<span>Extrem</span><span>Stark</span><span>Mäßig</span><span>Leicht</span>';
+    toggleRadar(true);
+    if (!state.radarFrames || !state.radarFrames.length) loadRadar();
+  } else if (kind === 'clouds') {
+    if (legendTitle) legendTitle.textContent = 'Wolken';
+    if (legendLabels) legendLabels.innerHTML =
+      '<span>Dicht</span><span>Mittel</span><span>Leicht</span><span>Klar</span>';
+    toggleClouds(true);
+  }
+  // Reflect selection in the popover menu
+  document.querySelectorAll('#radarLayerMenu button').forEach(b => {
+    b.classList.toggle('active', b.dataset.layer === kind);
+  });
+}
+
+function toggleRadarLayerMenu() {
+  const menu = document.getElementById('radarLayerMenu');
+  if (!menu) return;
+  menu.hidden = !menu.hidden;
+  // Close the locations picker if it was open
+  const picker = document.getElementById('radarLocPicker');
+  if (picker && !menu.hidden) picker.hidden = true;
+}
+
+// ============ INLINE LOCATIONS PICKER (radar overlay) ============
+function toggleRadarLocPicker() {
+  const picker = document.getElementById('radarLocPicker');
+  if (!picker) return;
+  if (picker.hidden) {
+    renderRadarLocPicker();
+    picker.hidden = false;
+    // Also close the layer menu
+    const menu = document.getElementById('radarLayerMenu');
+    if (menu) menu.hidden = true;
+  } else {
+    picker.hidden = true;
+  }
+}
+function renderRadarLocPicker() {
+  const list = document.getElementById('radarLocPickerList');
+  if (!list) return;
+  if (!state.locations.length) {
+    list.innerHTML = '<div class="radar-loc-empty">Keine gespeicherten Standorte.</div>';
+    return;
+  }
+  list.innerHTML = state.locations.map((l, i) => {
+    const isActive = i === state.idx;
+    const sub = [l.admin1, l.country].filter(Boolean).join(', ');
+    return `
+      <button class="radar-loc-row${isActive ? ' active' : ''}" data-idx="${i}">
+        <svg><use href="#i-pin"/></svg>
+        <div class="radar-loc-row-text">
+          <div class="radar-loc-row-name">${escapeHtml(l.name)}</div>
+          <div class="radar-loc-row-sub">${escapeHtml(sub) || '—'}</div>
+        </div>
+      </button>
+    `;
+  }).join('');
+  list.querySelectorAll('button[data-idx]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = +btn.dataset.idx;
+      if (idx === state.idx) {
+        // Already active — just pan to it and close
+        panMapToCurrent();
+      } else {
+        state.idx = idx;
+        saveLocs();
+        // Update markers + pan map without leaving the radar overlay
+        updateMapMarkers();
+        if (state.map) {
+          const loc = state.locations[idx];
+          const z = Math.max(state.map.getZoom() || 8, 7);
+          try { state.map.setView([loc.latitude, loc.longitude], z, { animate: true }); } catch(e) {}
+        }
+        // Refresh app state in the background so closing the overlay
+        // shows the newly-selected location's data.
+        try { loadCurrent(); } catch(e) {}
+      }
+      const picker = document.getElementById('radarLocPicker');
+      if (picker) picker.hidden = true;
+    });
+  });
+}
+
+// rAF-based playback — increments the FLOAT frame position smoothly so the
+// rain visibly drifts/grows/shrinks instead of jumping at hour boundaries.
+// Speed = data-frames per second of real time. Lower = slower playback.
+const RADAR_FRAMES_PER_SEC = 1.6;
 function playRadarAnimation() {
   if (state.radarPlaying) { stopRadarAnimation(); return; }
   if (!state.radarFrames.length) return;
   state.radarPlaying = true;
   document.getElementById('radarPlayIcon').setAttribute('href', '#i-pause');
-  let last = performance.now();
-  function step(t) {
+  let lastT = performance.now();
+  function step(now) {
     if (!state.radarPlaying) return;
-    // Hold a little longer on "now" (frame 0) and on the very last frame so
-    // the eye has time to register the start and end of the loop.
-    const isPauseFrame = state.radarIdx === 0 || state.radarIdx === state.radarFrames.length - 1;
-    const wait = isPauseFrame ? RADAR_PAUSE_MS : RADAR_FRAME_MS;
-    if (t - last >= wait) {
-      let next = state.radarIdx + 1;
-      if (next >= state.radarFrames.length) next = 0;
-      showRadarFrame(next);
-      last = t;
-    }
+    const dt = (now - lastT) / 1000;
+    lastT = now;
+    const N = state.radarFrames.length;
+    let next = (state.radarFrameFloat || 0) + dt * RADAR_FRAMES_PER_SEC;
+    // Loop with a brief hold at the end so the eye registers the wrap-around
+    if (next >= N - 1) next = 0;
+    showRadarFrame(next);
     state.radarRaf = requestAnimationFrame(step);
   }
   state.radarRaf = requestAnimationFrame(step);
@@ -5669,10 +7006,10 @@ function initTileSheet() {
 // ============ SETTINGS ============
 const SETTINGS_KEY = 'wetter_settings_v1';
 const DEFAULT_SETTINGS = {
-  // Visible cards
-  visible: { hero: true, hourly: true, forecast: true, map: true, tiles: true },
+  // Visible cards (radar lives in its own fullscreen overlay now, not the bento)
+  visible: { hero: true, hourly: true, forecast: true, tiles: true },
   // Order — left column then right column merged sequentially
-  order: ['hero', 'hourly', 'forecast', 'map', 'tiles'],
+  order: ['hero', 'hourly', 'forecast', 'tiles'],
   // 5 / 10 / 'all'
   forecastDays: 10
 };
@@ -5680,7 +7017,6 @@ const CARD_LABELS = {
   hero:     { label: 'Aktuelles Wetter',  icon: 'i-thermo' },
   hourly:   { label: 'Stündliche Vorhersage', icon: 'i-cloud-sun' },
   forecast: { label: 'Tages-Vorhersage', icon: 'i-list' },
-  map:      { label: 'Karte & Radar',     icon: 'i-pin' },
   tiles:    { label: 'Detail-Bentos',     icon: 'i-gauge' }
 };
 
@@ -5721,7 +7057,7 @@ function applySettings() {
   const cardEls = {};
   document.querySelectorAll('[data-card]').forEach(el => { cardEls[el.dataset.card] = el; });
   const leftKeys = ['hero', 'hourly', 'forecast'];
-  const rightKeys = ['map', 'tiles'];
+  const rightKeys = ['tiles'];
   const dots = document.getElementById('dots');
   // Left side: append in saved order, dots always right after hero (or first if hero hidden)
   const leftOrdered = settings.order.filter(k => leftKeys.includes(k) && cardEls[k]);
@@ -6209,6 +7545,45 @@ function switchLocation(dir) {
   }, 220);
 }
 
+// ============ BOTTOM FADE (progressive blur strip behind Safari UI) ============
+// CSS alone can't ramp backdrop-filter strength across a single element.
+// Instead the strip stacks 4 layers (CSS handles the per-layer blur amounts
+// and masks). This function only adjusts the overall HEIGHT of the strip
+// at runtime, so it always extends BEHIND the iOS Safari toolbar without
+// being too tall on browsers without one. Re-runs on viewport changes.
+function setupBottomFade() {
+  const el = document.getElementById('bottomFade');
+  if (!el) return;
+  function apply() {
+    // visualViewport.height is the visible (above-keyboard, above-Safari-UI)
+    // area; window.innerHeight on iOS is the *layout* viewport which extends
+    // BEHIND the URL bar. The difference is exactly how much Safari chrome
+    // overlaps the page.
+    const vv = window.visualViewport;
+    let safariOverlap = 0;
+    if (vv) {
+      safariOverlap = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    }
+    // Visible part of the strip (above any Safari chrome) — keep it tight,
+    // just enough room for the blur to ramp.
+    const visiblePart = 90;
+    // Total = visible band + safari overlap + a small buffer so the very
+    // bottom edge sits cleanly behind the URL bar.
+    const total = visiblePart + safariOverlap + 14;
+    el.style.height = total + 'px';
+    // Push the strip down by exactly the safariOverlap so its bottom edge
+    // sits at the *layout* bottom (i.e. behind the URL bar).
+    el.style.bottom = (-safariOverlap) + 'px';
+  }
+  apply();
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', apply);
+    window.visualViewport.addEventListener('scroll', apply);
+  }
+  window.addEventListener('resize', apply);
+  window.addEventListener('orientationchange', apply);
+}
+
 // ============ INIT ============
 function init() {
   if (!state.locations.length) {
@@ -6254,50 +7629,83 @@ function init() {
     }, { enableHighAccuracy: false, maximumAge: 600000, timeout: 10000 });
   });
 
-  // Map: must wait until map div is sized
-  setTimeout(initMap, 100);
+  // Radar overlay: open from topbar button, close from overlay close
+  const radarBtn = document.getElementById('radarBtn');
+  if (radarBtn) radarBtn.addEventListener('click', openRadarOverlay);
+  const radarClose = document.getElementById('radarOverlayClose');
+  if (radarClose) radarClose.addEventListener('click', closeRadarOverlay);
+  const radarLocate = document.getElementById('radarOverlayLocate');
+  if (radarLocate) radarLocate.addEventListener('click', () => panMapToCurrent());
 
-  // Map layer chips — exclusive: only one of radar/temp/clouds active at a time
-  document.querySelectorAll('.chip[data-overlay]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const ov = btn.dataset.overlay;
-      // Clear all overlay state
-      document.querySelectorAll('.chip[data-overlay]').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      // Hide all overlays first
-      toggleRadar(false);
-      hideTemperatureOverlay();
-      toggleClouds(false);
-      // Hide the no-precip badge by default; loadRadar will re-enable it if needed
-      const empty = document.getElementById('mapEmpty');
-      if (empty) empty.hidden = true;
-      // Show requested overlay
-      if (ov === 'radar') {
-        toggleRadar(true);
-        setMapLegend('radar');
-        // Re-fetch only if we don't already have frames cached
-        if (!state.radarFrames || !state.radarFrames.length) loadRadar();
-        else {
-          // Re-evaluate empty-state for the cached frames
-          const totalWet = state.radarFrames.reduce((s, f) => s + f.points.length, 0);
-          if (empty) empty.hidden = totalWet > 0;
-        }
-      }
-      else if (ov === 'temp') { showTemperatureOverlay(); setMapLegend('temp'); }
-      else if (ov === 'clouds') { toggleClouds(true); setMapLegend('clouds'); }
+  // Layer picker: toggle menu, switch layers
+  const layersBtn = document.getElementById('radarLayersBtn');
+  const layerMenu = document.getElementById('radarLayerMenu');
+  if (layersBtn) layersBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleRadarLayerMenu();
+  });
+  if (layerMenu) {
+    layerMenu.querySelectorAll('button[data-layer]').forEach(b => {
+      b.addEventListener('click', () => {
+        _setRadarLayer(b.dataset.layer);
+        layerMenu.hidden = true;
+      });
     });
+  }
+  // Click outside closes the layer menu
+  document.addEventListener('click', (e) => {
+    const menu = document.getElementById('radarLayerMenu');
+    if (!menu || menu.hidden) return;
+    if (!menu.contains(e.target) && e.target.id !== 'radarLayersBtn'
+        && !e.target.closest('#radarLayersBtn')) {
+      menu.hidden = true;
+    }
   });
 
-  // Fullscreen button
-  const fsBtn = document.getElementById('mapFullscreen');
-  if (fsBtn) fsBtn.addEventListener('click', toggleMapFullscreen);
-
-  // Radar slider + play
-  document.getElementById('radarSlider').addEventListener('input', e => {
-    stopRadarAnimation();
-    showRadarFrame(+e.target.value);
+  // List button inside radar overlay → toggle inline location picker.
+  // Using openSheet here would render the sheet *behind* the overlay
+  // (radar-overlay z-index is 260, sheet is 210), so we render an
+  // Apple-Weather style popover anchored to the button instead.
+  const radarListBtn = document.getElementById('radarListBtn');
+  if (radarListBtn) radarListBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleRadarLocPicker();
   });
-  document.getElementById('radarPlay').addEventListener('click', playRadarAnimation);
+  // Click outside closes the picker
+  document.addEventListener('click', (e) => {
+    const picker = document.getElementById('radarLocPicker');
+    if (!picker || picker.hidden) return;
+    if (!picker.contains(e.target) && e.target.id !== 'radarListBtn'
+        && !e.target.closest('#radarListBtn')) {
+      picker.hidden = true;
+    }
+  });
+
+  // Range segmented control (1 Std. / 2 Std.)
+  document.querySelectorAll('#radarRangeSeg button').forEach(b => {
+    b.addEventListener('click', () => setRadarRange(+b.dataset.range));
+  });
+
+  // Esc closes the overlay
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && _radarOverlayOpen) closeRadarOverlay();
+  });
+
+  // Radar slider + play (inside overlay) — supports fractional positions
+  // for silky-smooth scrubbing between forecast frames.
+  const radarSlider = document.getElementById('radarSlider');
+  if (radarSlider) {
+    radarSlider.step = '0.05';
+    radarSlider.addEventListener('input', e => {
+      stopRadarAnimation();
+      showRadarFrame(parseFloat(e.target.value));
+    });
+  }
+  const radarPlayBtn = document.getElementById('radarPlay');
+  if (radarPlayBtn) radarPlayBtn.addEventListener('click', playRadarAnimation);
+
+  // Set up the JS-driven progressive bottom-fade height (covers Safari UI)
+  setupBottomFade();
 
   // Initial load
   loadCurrent();
